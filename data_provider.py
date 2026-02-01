@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import logging
 from typing import Deque
 
 import requests
@@ -22,8 +23,6 @@ class PriceHistory:
         for ts, price in reversed(self.points):
             if ts <= target_time:
                 return price
-        if self.points:
-            return self.points[0][1]
         return None
 
 
@@ -32,6 +31,7 @@ class BinanceDataProvider:
     session: requests.Session | None = None
     history: dict[str, PriceHistory] = field(default_factory=dict)
     last_connection_ok: bool = True
+    last_update_ts: datetime | None = None
 
     def _get_session(self) -> requests.Session:
         if self.session is None:
@@ -53,34 +53,41 @@ class BinanceDataProvider:
                     continue
         return prices
 
-    def update(self, symbols: list[str]) -> dict[str, dict[str, float]]:
+    def update(self, symbols: list[str]) -> dict[str, dict[str, float | None]]:
         now = datetime.utcnow()
         try:
             prices = self.fetch_prices(symbols)
             self.last_connection_ok = True
+            self.last_update_ts = now
         except requests.RequestException:
             self.last_connection_ok = False
+            logging.warning("Price update failed; keeping last_update_ts unchanged.")
             return {}
 
-        snapshot: dict[str, dict[str, float]] = {}
+        snapshot: dict[str, dict[str, float | None]] = {}
         for symbol, price in prices.items():
             history = self.history.setdefault(symbol, PriceHistory())
             history.append(now, price)
             snapshot[symbol] = {
                 "price_now": price,
-                "price_15m_ago": self._price_delta(history, now, timedelta(minutes=15), price),
-                "price_1h_ago": self._price_delta(history, now, timedelta(hours=1), price),
-                "price_4h_ago": self._price_delta(history, now, timedelta(hours=4), price),
+                "price_15m_ago": self._price_delta(history, now, timedelta(minutes=15)),
+                "price_1h_ago": self._price_delta(history, now, timedelta(hours=1)),
+                "price_4h_ago": self._price_delta(history, now, timedelta(hours=4)),
             }
         return snapshot
+
+    def age_sec(self, now: datetime | None = None) -> float | None:
+        if self.last_update_ts is None:
+            return None
+        now = now or datetime.utcnow()
+        return (now - self.last_update_ts).total_seconds()
 
     @staticmethod
     def _price_delta(
         history: PriceHistory,
         now: datetime,
         delta: timedelta,
-        fallback: float,
-    ) -> float:
+    ) -> float | None:
         target = now - delta
         price = history.price_at(target)
-        return price if price is not None else fallback
+        return price
