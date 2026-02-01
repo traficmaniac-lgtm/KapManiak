@@ -154,8 +154,8 @@ class DecisionEngine:
             reason_codes.append("DATA_STALE")
             state = "SAFE"
         elif not leader_row:
-            reason_codes.append("ERROR")
-            state = "SAFE"
+            reason_codes.append("HOLD_WARMUP")
+            state = "WARMUP"
         else:
             self._reset_daily_switch_count(now)
             if not self._can_switch(now):
