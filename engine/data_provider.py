@@ -23,7 +23,7 @@ class BinanceDataProvider:
 
     def fetch_prices(self, symbols: List[str]) -> PriceSnapshot:
         endpoint = "https://api.binance.com/api/v3/ticker/price"
-        payload = {"symbols": json.dumps(symbols)}
+        payload = {"symbols": json.dumps(symbols, separators=(",", ":"))}
         response = self._session.get(endpoint, params=payload, timeout=10)
         response.raise_for_status()
         data = response.json()
