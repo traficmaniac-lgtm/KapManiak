@@ -1,52 +1,57 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import List
 
 
-START_EQUITY_USDT = 100.0
-START_ASSET = "USDT"
-
-PRICE_MODE = "MID"
-COST_MODEL = "CONSERVATIVE_BPS"
-
-DB_PATH = "kapmaniak.db"
-REPORT_DIR = "reports"
-
-
-@dataclass(frozen=True)
+@dataclass
 class AppConfig:
-    sample_interval_sec: int = 10
-    universe_size: int = 10
-    min_quote_volume: float = 5_000_000.0
-    confirm_n: int = 3
-    min_hold_sec: int = 15 * 60
-    cooldown_sec: int = 120
+    """Configuration for KapManiak v0.1 (PAPER mode only)."""
+
+    starting_balance: float = 10000.0
+    update_interval_sec: int = 10
+    universe: List[str] = field(
+        default_factory=lambda: [
+            "BTC",
+            "ETH",
+            "BNB",
+            "SOL",
+            "XRP",
+            "ADA",
+            "DOGE",
+            "TRX",
+            "MATIC",
+            "DOT",
+            "LTC",
+            "AVAX",
+            "LINK",
+            "BCH",
+            "XLM",
+            "ATOM",
+            "ETC",
+            "FIL",
+            "APT",
+            "NEAR",
+        ]
+    )
     edge_threshold_pct: float = 0.5
-    net_edge_min_pct: float = 0.25
-    max_switches_day: int = 12
+    confirm_n: int = 3
+    min_hold_sec: int = 900
+    cooldown_sec: int = 120
+    max_switches_per_day: int = 12
     data_stale_sec: int = 30
-    safe_mode_action: str = "STOP"
+    ret_15m_sec: int = 15 * 60
+    ret_1h_sec: int = 60 * 60
+    ret_4h_sec: int = 4 * 60 * 60
+    weight_15m: float = 0.5
+    weight_1h: float = 0.3
+    weight_4h: float = 0.2
     fee_bps: float = 7.5
     slippage_bps: float = 5.0
-    spread_bps: float = 2.0
+    spread_bps_buffer: float = 2.0
+    net_edge_gate_enabled: bool = True
+    net_edge_min_pct: float = 0.25
 
     @property
-    def sample_interval(self) -> int:
-        return self.sample_interval_sec
-
-    @property
-    def edge_threshold(self) -> float:
-        return self.edge_threshold_pct / 100
-
-    @property
-    def net_edge_min(self) -> float:
-        return self.net_edge_min_pct / 100
-
-    @property
-    def cost_bps(self) -> float:
-        return 2 * (self.fee_bps + self.slippage_bps + self.spread_bps)
-
-    @property
-    def cost_pct(self) -> float:
-        return self.cost_bps / 10_000
-
-
-DEFAULT_CONFIG = AppConfig()
+    def symbols(self) -> List[str]:
+        return [f"{asset}USDT" for asset in self.universe]
