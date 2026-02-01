@@ -90,6 +90,7 @@ Equity curve and switch history are stored in `./data/kapmaniak.sqlite` and load
 - `HOLD_NET_EDGE_TOO_SMALL` — Net edge below configured net-edge gate.
 - `HOLD_CONFIRMING` — Waiting for confirm-N consistency.
 - `HOLD_MAX_SWITCHES` — Daily switch limit reached.
+- `HOLD_WARMUP` — Waiting for enough price history to score assets.
 - `SWITCH` — Switch executed.
 - `DATA_STALE` — Data is stale; safe mode, no switching.
 - `ERROR` — Data or scoring unavailable.
