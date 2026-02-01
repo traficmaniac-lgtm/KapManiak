@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMainWindow,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -18,27 +19,39 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config import DEFAULT_CONFIG
+from config import (
+    DB_PATH,
+    REPORT_DIR,
+    DEFAULT_CONFIG,
+    START_ASSET,
+    START_EQUITY_USDT,
+)
 from data_provider import BinanceDataProvider
 from decision_engine import DecisionEngine, DecisionState
+from paper_portfolio import PaperPortfolio
+from reporting import export_report
 from score_engine import apply_costs, compute_scores
+from storage_sqlite import SQLiteStorage, ensure_db_path
 from universe import UniverseManager, normalize_symbols
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("KapManiak v0.1.2")
+        self.setWindowTitle("KapManiak v0.1.3")
 
-        self.current_asset = "USDT"
-        self.equity = 100.0
+        self.current_asset = START_ASSET
+        self.portfolio = PaperPortfolio.from_start(START_ASSET, START_EQUITY_USDT)
 
         self.data_provider = BinanceDataProvider()
         self.universe_manager = UniverseManager(session=self.data_provider.session)
         self.universe = normalize_symbols(self.universe_manager.get_universe())
         self.decision_engine = DecisionEngine(DecisionState(current_asset=self.current_asset))
+        self.storage = SQLiteStorage(ensure_db_path(DB_PATH))
+        self.storage.init_db()
 
         self._build_ui()
+        self._update_paper_stats()
         self._setup_timer()
 
     def _build_ui(self) -> None:
@@ -48,13 +61,16 @@ class MainWindow(QMainWindow):
         header_layout = QGridLayout()
         self.mode_label = QLabel("Mode: PAPER")
         self.connection_label = QLabel("Connection: OFF")
-        self.asset_label = QLabel(f"Current Asset: {self.current_asset}")
-        self.equity_label = QLabel(f"Equity: ${self.equity:.2f}")
+        self.asset_label = QLabel("")
+        self.equity_label = QLabel("")
+        self._update_portfolio_labels()
 
         header_layout.addWidget(self.mode_label, 0, 0)
         header_layout.addWidget(self.connection_label, 0, 1)
         header_layout.addWidget(self.asset_label, 0, 2)
         header_layout.addWidget(self.equity_label, 0, 3)
+        header_layout.addWidget(QLabel(f"DB: {DB_PATH}"), 1, 0)
+        header_layout.addWidget(QLabel(f"Reports: {REPORT_DIR}"), 1, 1)
 
         main_layout.addLayout(header_layout)
 
@@ -105,6 +121,18 @@ class MainWindow(QMainWindow):
             self._log("INFO", "DATA_UPDATE", "No data available from provider")
             return
 
+        prices_now = {
+            symbol: float(payload["price_now"])
+            for symbol, payload in price_snapshot.items()
+            if payload.get("price_now") is not None
+        }
+        if not prices_now:
+            self._log("WARN", "DATA_UPDATE", "No price data available for universe")
+            return
+
+        ts_ms = int(now.timestamp() * 1000)
+        self.storage.insert_tick(ts_ms, prices_now, data_age_sec)
+
         df = compute_scores(price_snapshot)
         df = apply_costs(df, self.current_asset)
         if df.empty:
@@ -125,10 +153,72 @@ class MainWindow(QMainWindow):
 
         self._update_table(df, leader, decision)
         self._update_decision_card(decision)
+        self.storage.insert_decision(
+            ts_ms=ts_ms,
+            current_asset=self.current_asset,
+            leader_asset=leader,
+            decision=self._map_decision_state(decision.state),
+            reasons=decision.block_reasons,
+            edge_pct=decision.edge_pct,
+            net_edge_pct=decision.net_edge_pct,
+            cost_pct=decision.cost_pct,
+            confirm_k=decision.confirm_k,
+            confirm_n=decision.confirm_n,
+        )
         self._log("INFO", "DATA_UPDATE", f"Updated {len(df)} assets")
         self._log("INFO", "SCORE_UPDATE", f"Leader {leader} score {leader_row['score']:.4f}")
         reasons = ",".join(decision.block_reasons) if decision.block_reasons else "NONE"
         self._log("INFO", "DECISION", f"{decision.state} | {reasons}")
+
+        trade_details = None
+        if decision.state == "READY_TO_SWITCH":
+            try:
+                trade_details = self.portfolio.simulate_switch_via_usdt(
+                    leader,
+                    prices_now,
+                    DEFAULT_CONFIG.cost_bps,
+                    now=now,
+                )
+            except KeyError as exc:
+                self._log("WARN", "SWITCH_SIM", f"Missing price for {exc}")
+            else:
+                self.current_asset = self.portfolio.asset
+                self.decision_engine.state.current_asset = self.current_asset
+                self.decision_engine.state.last_switch_ts = now
+                self.decision_engine.state.switches_today_count += 1
+                self._log(
+                    "INFO",
+                    "SWITCH_SIM",
+                    f"{trade_details['from_asset']} -> {trade_details['to_asset']}, "
+                    f"equity {trade_details['v_before']:.2f} -> {trade_details['v_after']:.2f} USDT",
+                )
+
+        if trade_details and trade_details.get("status") == "SWITCHED":
+            self.storage.insert_trade_sim(
+                ts_ms=ts_ms,
+                from_asset=str(trade_details["from_asset"]),
+                to_asset=str(trade_details["to_asset"]),
+                v_before_usdt=float(trade_details["v_before"]),
+                v_after_usdt=float(trade_details["v_after"]),
+                cost_paid_usdt=float(trade_details["cost_paid"]),
+                px_used=None if trade_details["px_used"] is None else float(trade_details["px_used"]),
+            )
+            self._update_decision_card(decision)
+
+        try:
+            equity = self.portfolio.update_equity(prices_now)
+        except KeyError as exc:
+            self._log("WARN", "EQUITY_UPDATE", f"Missing price for {exc}")
+            return
+
+        self.storage.insert_equity_curve(
+            ts_ms=ts_ms,
+            equity_usdt=equity,
+            asset=self.portfolio.asset,
+            qty=self.portfolio.qty,
+        )
+        self._update_portfolio_labels()
+        self._update_paper_stats()
 
     def _find_leader(self, df: pd.DataFrame) -> str:
         if df.empty:
@@ -193,6 +283,43 @@ class MainWindow(QMainWindow):
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         self.log_view.append(f"{timestamp} | {level} | {code} | {message}")
 
+    def _update_portfolio_labels(self) -> None:
+        equity = self.portfolio.equity_usdt
+        qty_precision = 2 if self.portfolio.asset == "USDT" else 6
+        qty_text = f"{self.portfolio.qty:.{qty_precision}f}"
+        self.asset_label.setText(
+            f"Portfolio: {self.portfolio.asset} {qty_text} (≈ {equity:.2f} USDT)"
+        )
+        self.equity_label.setText(f"Equity: ${equity:.2f}")
+
+    def _update_paper_stats(self) -> None:
+        pnl_usdt = self.portfolio.equity_usdt - self.portfolio.start_equity_usdt
+        pnl_pct = (
+            pnl_usdt / self.portfolio.start_equity_usdt * 100
+            if self.portfolio.start_equity_usdt
+            else 0.0
+        )
+        switches_today = self.decision_engine.state.switches_today_count
+        self.paper_switches_value.setText(f"{switches_today}/{self.portfolio.switches_count}")
+        self.paper_costs_value.setText(f"{self.portfolio.total_cost_paid_usdt:.4f} USDT")
+        self.paper_pnl_value.setText(f"{pnl_usdt:.2f} USDT ({pnl_pct:.2f}%)")
+
+    @staticmethod
+    def _map_decision_state(state: str) -> str:
+        if state == "READY_TO_SWITCH":
+            return "READY"
+        if state == "SAFE_MODE":
+            return "SAFE_MODE"
+        return "HOLD"
+
+    def _export_report(self) -> None:
+        summary = export_report(DB_PATH, REPORT_DIR, self.portfolio.start_equity_usdt)
+        self._log(
+            "INFO",
+            "REPORT_EXPORT",
+            f"Exported report to {REPORT_DIR} (PnL {summary['pnl_usdt']:.2f} USDT)",
+        )
+
     def _log_missing_history(self, df: pd.DataFrame) -> None:
         missing = df.loc[~df["history_ok"], "asset"].tolist()
         if missing:
@@ -235,6 +362,29 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.switches_value, 7, 1)
 
         card_layout.addLayout(grid)
+
+        stats_title = QLabel("Paper Stats")
+        stats_title.setStyleSheet("font-weight: bold;")
+        card_layout.addWidget(stats_title)
+
+        stats_grid = QGridLayout()
+        self.paper_switches_value = QLabel("-")
+        self.paper_costs_value = QLabel("-")
+        self.paper_pnl_value = QLabel("-")
+
+        stats_grid.addWidget(QLabel("Switches (today/total):"), 0, 0)
+        stats_grid.addWidget(self.paper_switches_value, 0, 1)
+        stats_grid.addWidget(QLabel("Total costs paid:"), 1, 0)
+        stats_grid.addWidget(self.paper_costs_value, 1, 1)
+        stats_grid.addWidget(QLabel("PnL:"), 2, 0)
+        stats_grid.addWidget(self.paper_pnl_value, 2, 1)
+
+        card_layout.addLayout(stats_grid)
+
+        self.export_button = QPushButton("Export Report")
+        self.export_button.clicked.connect(self._export_report)
+        card_layout.addWidget(self.export_button)
+
         card_layout.addStretch()
         return card_layout
 
@@ -262,7 +412,12 @@ class MainWindow(QMainWindow):
         self.action_value.setText(decision.state)
         self.reasons_value.setText(reasons)
         self.timers_value.setText(timers_text)
-        self.switches_value.setText(f"{decision.switches_today_count}/{DEFAULT_CONFIG.max_switches_day}")
+        switches_today = self.decision_engine.state.switches_today_count
+        self.switches_value.setText(f"{switches_today}/{DEFAULT_CONFIG.max_switches_day}")
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt naming
+        self.storage.close()
+        super().closeEvent(event)
 
 
 def run_app() -> None:
