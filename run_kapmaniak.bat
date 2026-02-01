@@ -13,7 +13,7 @@ call ".venv\Scripts\activate.bat"
 if exist requirements.txt (
     pip install -r requirements.txt
 ) else (
-    pip install PySide6 requests pandas
+    pip install PySide6 requests
 )
 
 python app.py
