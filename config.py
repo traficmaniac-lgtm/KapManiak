@@ -1,6 +1,16 @@
 from dataclasses import dataclass
 
 
+START_EQUITY_USDT = 100.0
+START_ASSET = "USDT"
+
+PRICE_MODE = "MID"
+COST_MODEL = "CONSERVATIVE_BPS"
+
+DB_PATH = "kapmaniak.db"
+REPORT_DIR = "reports"
+
+
 @dataclass(frozen=True)
 class AppConfig:
     sample_interval_sec: int = 10
