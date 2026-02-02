@@ -1,18 +1,6 @@
 from __future__ import annotations
 
-import sys
-
-from PySide6.QtWidgets import QApplication
-
-from src.app_window import APP_QSS, MainWindow
-
-
-def main() -> int:
-    app = QApplication(sys.argv)
-    app.setStyleSheet(APP_QSS)
-    window = MainWindow()
-    window.show()
-    return app.exec()
+from src.app import main
 
 
 if __name__ == "__main__":
