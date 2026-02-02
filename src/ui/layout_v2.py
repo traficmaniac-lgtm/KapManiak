@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QTimer
@@ -8,11 +10,13 @@ from PySide6.QtGui import QDoubleValidator, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QFileDialog,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -22,8 +26,11 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QSizePolicy,
 )
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 
-from src.core.calc import Settings, calc_item, calc_rub_per_coin_buyer
+from src.core.calc import Settings, calc_item, calc_quick, calc_rub_per_coin_buyer
 from src.core.config import GoodsItem, load_config, load_goods, new_goods_item, save_config, save_goods
 from src.services.rate_service import fetch_rate
 from src.ui.settings_dialog import SettingsDialog
@@ -197,6 +204,10 @@ class MainWindow(QMainWindow):
 
         self.rub_per_coin_base_label = self._make_value_label()
         self.rub_per_coin_sbp_label = self._make_value_label()
+        self.sum_base_label = self._make_value_label()
+        self.sum_sbp_label = self._make_value_label()
+        self.sum_withdraw_rub_label = self._make_value_label()
+        self.sum_withdraw_usdt_label = self._make_value_label()
 
         form_layout = QGridLayout()
         form_layout.setHorizontalSpacing(10)
@@ -211,6 +222,14 @@ class MainWindow(QMainWindow):
         form_layout.addWidget(self.rub_per_coin_base_label, 3, 1)
         form_layout.addWidget(QLabel("1 монета (СБП) ="), 4, 0)
         form_layout.addWidget(self.rub_per_coin_sbp_label, 4, 1)
+        form_layout.addWidget(QLabel("Сумма (База) ₽"), 5, 0)
+        form_layout.addWidget(self.sum_base_label, 5, 1)
+        form_layout.addWidget(QLabel("Сумма (СБП) ₽"), 6, 0)
+        form_layout.addWidget(self.sum_sbp_label, 6, 1)
+        form_layout.addWidget(QLabel("К выводу ₽"), 7, 0)
+        form_layout.addWidget(self.sum_withdraw_rub_label, 7, 1)
+        form_layout.addWidget(QLabel("К получению USDT"), 8, 0)
+        form_layout.addWidget(self.sum_withdraw_usdt_label, 8, 1)
         form_layout.setColumnStretch(1, 1)
 
         layout.addLayout(form_layout)
@@ -246,7 +265,10 @@ class MainWindow(QMainWindow):
         clear_button = QPushButton("Очистить")
         clear_button.clicked.connect(self.clear_goods)
 
-        for button in (add_button, remove_button, clear_button):
+        export_button = QPushButton("Сохранить")
+        export_button.clicked.connect(self.export_goods)
+
+        for button in (add_button, remove_button, clear_button, export_button):
             button.setMinimumWidth(120)
             button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
@@ -255,6 +277,7 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(add_button)
         buttons_layout.addWidget(remove_button)
         buttons_layout.addWidget(clear_button)
+        buttons_layout.addWidget(export_button)
         buttons_layout.addStretch(1)
 
         self.goods_hint = QLabel("")
@@ -400,6 +423,13 @@ class MainWindow(QMainWindow):
         self.rub_per_coin_base_label.setText(_format_rub(rub_per_coin_me))
         self.rub_per_coin_sbp_label.setText(_format_rub(rub_per_coin_sbp))
 
+        coins_qty = _parse_positive_float(self.coins_qty_input.text())
+        quick = calc_quick(settings, coins_qty, None, None)
+        self.sum_base_label.setText(_format_rub_total(quick.base_rub))
+        self.sum_sbp_label.setText(_format_rub_total(quick.sbp_rub))
+        self.sum_withdraw_rub_label.setText(_format_rub_total(quick.withdraw_rub))
+        self.sum_withdraw_usdt_label.setText(_format_usdt_range(quick.withdraw_usdt))
+
     def add_goods(self) -> None:
         price_coins = _parse_positive_float(self.item_price_input.text())
         if price_coins is None:
@@ -453,6 +483,103 @@ class MainWindow(QMainWindow):
                     cell.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.goods_table.setItem(row_index, col, cell)
         self.goods_table.resizeRowsToContents()
+
+    def export_goods(self) -> None:
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить как…",
+            "kapmaniak_items.xlsx",
+            "Excel Files (*.xlsx)",
+        )
+        if not filename:
+            return
+        path = Path(filename)
+        if path.suffix.lower() != ".xlsx":
+            path = path.with_suffix(".xlsx")
+
+        settings = self._settings()
+        workbook = Workbook()
+        items_sheet = workbook.active
+        items_sheet.title = "Items"
+
+        headers = [
+            "Товар",
+            "Цена (монеты)",
+            "База ₽",
+            "Карта RU ₽",
+            "СБП QR ₽",
+            "Сумма вывода ₽",
+            "К получению USDT",
+        ]
+        items_sheet.append(headers)
+        header_font = Font(bold=True)
+        for col_index in range(1, len(headers) + 1):
+            cell = items_sheet.cell(row=1, column=col_index)
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center")
+
+        for item in self.goods:
+            calc = calc_item(settings, item.price_coins)
+            items_sheet.append(
+                [
+                    item.name,
+                    item.price_coins,
+                    calc.base_rub,
+                    calc.card_rub,
+                    calc.sbp_rub,
+                    calc.withdraw_amount_rub,
+                    calc.withdraw_usdt,
+                ]
+            )
+
+        number_align = Alignment(horizontal="right")
+        coin_format = "# ##0.00##"
+        rub_format = "# ##0.00"
+        usdt_format = "# ##0.00##"
+        for row in items_sheet.iter_rows(min_row=2, min_col=2, max_col=7):
+            for col_offset, cell in enumerate(row, start=2):
+                if cell.value is None:
+                    continue
+                cell.alignment = number_align
+                if col_offset == 2:
+                    cell.number_format = coin_format
+                elif col_offset == 7:
+                    cell.number_format = usdt_format
+                else:
+                    cell.number_format = rub_format
+
+        items_sheet.freeze_panes = "A2"
+        _autosize_columns(items_sheet)
+
+        meta_sheet = workbook.create_sheet("Meta")
+        meta_headers = ["Параметр", "Значение"]
+        meta_sheet.append(meta_headers)
+        for col_index in range(1, len(meta_headers) + 1):
+            cell = meta_sheet.cell(row=1, column=col_index)
+            cell.font = header_font
+
+        meta_rows = [
+            ("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            ("USDT_RUB rate", settings.rub_per_usdt),
+            ("withdraw_rate ₽/USDT", settings.withdraw_rate_rub_per_usdt or settings.rub_per_usdt),
+            ("withdraw_fee_pct", settings.withdraw_fee_pct),
+            ("withdraw_fee_min", settings.withdraw_fee_min_rub),
+            ("k_sbp_qr", settings.k_sbp_qr),
+            ("k_card_ru", settings.k_card_ru),
+            ("1 монета = адены", settings.coin_to_adena),
+            ("1кк адены = ₽ (FP)", settings.rub_per_1kk_buyer),
+        ]
+        for key, value in meta_rows:
+            meta_sheet.append([key, value])
+
+        for row in meta_sheet.iter_rows(min_row=2, min_col=2, max_col=2):
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    cell.alignment = number_align
+
+        _autosize_columns(meta_sheet)
+        workbook.save(path)
+        QMessageBox.information(self, "Экспорт", f"Сохранено: {path}")
 
     def _settings(self) -> Settings:
         return Settings(
@@ -526,13 +653,47 @@ def _format_rub(value: Optional[float], suffix: str = " ₽") -> str:
     return f"{formatted}{suffix}".replace(",", " ")
 
 
+def _format_rub_total(value: Optional[float], suffix: str = " ₽") -> str:
+    if value is None:
+        return "—"
+    formatted = f"{value:,.2f}".replace(",", " ")
+    return f"{formatted}{suffix}"
+
+
 def _format_usdt(value: Optional[float]) -> str:
     if value is None:
         return "—"
     return f"{value:,.4f} USDT".replace(",", " ")
 
 
+def _format_usdt_range(value: Optional[float]) -> str:
+    if value is None:
+        return "—"
+    formatted = f"{value:,.4f}".replace(",", " ")
+    whole, _, frac = formatted.partition(".")
+    frac = frac.rstrip("0")
+    if len(frac) < 2:
+        frac = frac.ljust(2, "0")
+    formatted = f"{whole}.{frac}"
+    return f"{formatted} USDT"
+
+
 def _format_percent(value: Optional[float]) -> str:
     if value is None:
         return "—"
     return f"{value * 100:.2f}%"
+
+
+def _autosize_columns(sheet: object) -> None:
+    for column_cells in sheet.columns:
+        max_length = 0
+        column = column_cells[0].column
+        for cell in column_cells:
+            value = cell.value
+            if value is None:
+                continue
+            length = len(str(value))
+            if length > max_length:
+                max_length = length
+        adjusted = max(10, min(max_length + 2, 40))
+        sheet.column_dimensions[get_column_letter(column)].width = adjusted
