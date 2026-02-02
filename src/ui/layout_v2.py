@@ -318,8 +318,19 @@ class MainWindow(QMainWindow):
         layout.addLayout(form_layout)
         layout.addLayout(buttons_layout)
         layout.addWidget(self.goods_hint)
-        layout.addWidget(self.goods_table)
-        layout.addWidget(self._build_goods_totals())
+        self.goods_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        self.goods_total_bar = QFrame()
+        self.goods_total_bar.setFixedHeight(36)
+        total_bar_layout = QHBoxLayout(self.goods_total_bar)
+        total_bar_layout.setContentsMargins(12, 4, 12, 4)
+        total_bar_layout.addStretch(1)
+        self.total_withdraw_usdt_label = QLabel("Итого: К получению USDT = —")
+        total_bar_layout.addWidget(self.total_withdraw_usdt_label)
+
+        layout.addWidget(self.goods_table, 1)
+        layout.addWidget(self.goods_total_bar)
+        layout.setStretchFactor(self.goods_table, 1)
         return card
 
     def _make_number_input(self, placeholder: str) -> QLineEdit:
@@ -335,33 +346,6 @@ class MainWindow(QMainWindow):
         label = QLabel("—")
         label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         return label
-
-    def _build_goods_totals(self) -> QFrame:
-        container, layout = self._build_card("Итого")
-
-        self.total_base_label = self._make_value_label()
-        self.total_card_label = self._make_value_label()
-        self.total_sbp_label = self._make_value_label()
-        self.total_withdraw_rub_label = self._make_value_label()
-        self.total_withdraw_usdt_label = self._make_value_label()
-
-        totals_layout = QGridLayout()
-        totals_layout.setHorizontalSpacing(10)
-        totals_layout.setVerticalSpacing(10)
-        totals_layout.addWidget(QLabel("База ₽"), 0, 0)
-        totals_layout.addWidget(self.total_base_label, 0, 1)
-        totals_layout.addWidget(QLabel("Карта RU ₽"), 1, 0)
-        totals_layout.addWidget(self.total_card_label, 1, 1)
-        totals_layout.addWidget(QLabel("СБП QR ₽"), 2, 0)
-        totals_layout.addWidget(self.total_sbp_label, 2, 1)
-        totals_layout.addWidget(QLabel("К выводу ₽"), 3, 0)
-        totals_layout.addWidget(self.total_withdraw_rub_label, 3, 1)
-        totals_layout.addWidget(QLabel("К получению USDT"), 4, 0)
-        totals_layout.addWidget(self.total_withdraw_usdt_label, 4, 1)
-        totals_layout.setColumnStretch(1, 1)
-
-        layout.addLayout(totals_layout)
-        return container
 
     def _load_config_to_fields(self) -> None:
         self.coin_to_adena_input.setText(_format_number(self.config.coin_to_adena))
@@ -503,17 +487,9 @@ class MainWindow(QMainWindow):
     def _refresh_goods_table(self) -> None:
         self.goods_table.setRowCount(len(self.goods))
         settings = self._settings()
-        total_base = []
-        total_card = []
-        total_sbp = []
-        total_withdraw_rub = []
         total_withdraw_usdt = []
         for row_index, item in enumerate(self.goods):
             calc = calc_item(settings, item.price_coins)
-            total_base.append(calc.base_rub)
-            total_card.append(calc.card_rub)
-            total_sbp.append(calc.sbp_rub)
-            total_withdraw_rub.append(calc.withdraw_amount_rub)
             total_withdraw_usdt.append(calc.withdraw_usdt)
             values = [
                 item.name,
@@ -531,26 +507,18 @@ class MainWindow(QMainWindow):
                 self.goods_table.setItem(row_index, col, cell)
         self.goods_table.resizeRowsToContents()
         self._refresh_goods_totals(
-            _sum_values(total_base),
-            _sum_values(total_card),
-            _sum_values(total_sbp),
-            _sum_values(total_withdraw_rub),
             _sum_values(total_withdraw_usdt),
         )
 
     def _refresh_goods_totals(
         self,
-        base_rub: Optional[float],
-        card_rub: Optional[float],
-        sbp_rub: Optional[float],
-        withdraw_rub: Optional[float],
         withdraw_usdt: Optional[float],
     ) -> None:
-        self.total_base_label.setText(_format_rub(base_rub))
-        self.total_card_label.setText(_format_rub(card_rub))
-        self.total_sbp_label.setText(_format_rub(sbp_rub))
-        self.total_withdraw_rub_label.setText(_format_rub(withdraw_rub))
-        self.total_withdraw_usdt_label.setText(_format_usdt(withdraw_usdt))
+        if withdraw_usdt is None:
+            formatted = "—"
+        else:
+            formatted = _format_usdt(max(withdraw_usdt, 0.0))
+        self.total_withdraw_usdt_label.setText(f"Итого: К получению USDT = {formatted}")
 
     def export_goods(self) -> None:
         filename, _ = QFileDialog.getSaveFileName(

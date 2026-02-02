@@ -7,8 +7,12 @@ from pathlib import Path
 from typing import List, Optional
 
 
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.json"
-GOODS_PATH = Path(__file__).resolve().parents[2] / "goods.json"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DATA_DIR = ROOT_DIR / "data"
+CONFIG_PATH = DATA_DIR / "settings.json"
+GOODS_PATH = DATA_DIR / "items.json"
+LEGACY_CONFIG_PATH = ROOT_DIR / "config.json"
+LEGACY_GOODS_PATH = ROOT_DIR / "goods.json"
 
 
 @dataclass
@@ -38,10 +42,11 @@ class GoodsItem:
 
 
 def load_config() -> AppConfig:
-    if not CONFIG_PATH.exists():
+    path = CONFIG_PATH if CONFIG_PATH.exists() else LEGACY_CONFIG_PATH
+    if not path.exists():
         return AppConfig()
     try:
-        payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return AppConfig()
     if not isinstance(payload, dict):
@@ -65,14 +70,16 @@ def load_config() -> AppConfig:
 
 
 def save_config(config: AppConfig) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(asdict(config), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_goods() -> List[GoodsItem]:
-    if not GOODS_PATH.exists():
+    path = GOODS_PATH if GOODS_PATH.exists() else LEGACY_GOODS_PATH
+    if not path.exists():
         return []
     try:
-        payload = json.loads(GOODS_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return []
     if not isinstance(payload, list):
@@ -107,6 +114,7 @@ def load_goods() -> List[GoodsItem]:
 
 
 def save_goods(items: List[GoodsItem]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     payload = [asdict(item) for item in items]
     GOODS_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
