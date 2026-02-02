@@ -9,6 +9,16 @@ python -m pip install -r requirements.txt
 python -m src.main
 ```
 
+Также можно использовать готовые файлы запуска:
+
+```bash
+./run.sh
+```
+
+```bat
+run.bat
+```
+
 ## Где хранятся данные
 
 - Настройки сохраняются через `QSettings` (реестр Windows).
