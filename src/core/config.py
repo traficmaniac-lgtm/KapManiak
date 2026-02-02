@@ -16,6 +16,8 @@ class AppConfig:
     coin_to_adena: Optional[float] = None
     rub_per_1kk_buyer: Optional[float] = None
     funpay_fee: float = 0.15
+    sbp_fee_effective: float = 0.1309
+    withdraw_markup_pct: float = 0.06
     usdt_withdraw_fee: float = 0.21
     rub_per_usdt: Optional[float] = None
 
@@ -40,6 +42,8 @@ def load_config() -> AppConfig:
         coin_to_adena=_to_optional_float(payload.get("coin_to_adena")),
         rub_per_1kk_buyer=_to_optional_float(payload.get("rub_per_1kk_buyer")),
         funpay_fee=_to_float(payload.get("funpay_fee"), 0.15),
+        sbp_fee_effective=_to_float(payload.get("sbp_fee_effective"), 0.1309),
+        withdraw_markup_pct=_to_float(payload.get("withdraw_markup_pct"), 0.06),
         usdt_withdraw_fee=_to_float(payload.get("usdt_withdraw_fee"), 0.21),
         rub_per_usdt=_to_optional_float(payload.get("rub_per_usdt")),
     )

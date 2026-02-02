@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSplitter,
     QTableWidget,
@@ -191,18 +192,25 @@ class MainWindow(QMainWindow):
         self.fp_payout_label = QLabel("—")
         self.withdraw_rub_label = QLabel("—")
         self.withdraw_usdt_label = QLabel("—")
+        self.debug_button = QPushButton("ℹ")
+        self.debug_button.setFixedWidth(36)
+        self.debug_button.clicked.connect(self._show_debug_breakdown)
 
         form_layout = QFormLayout()
         form_layout.setContentsMargins(12, 12, 12, 12)
         form_layout.setSpacing(8)
         form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         form_layout.addRow("Кол-во монет", self.coins_qty_input)
-        form_layout.addRow("FP ₽ покупателя", self.fp_buyer_label)
+        form_layout.addRow("СБП ₽ покупателя", self.fp_buyer_label)
         form_layout.addRow("FP ₽ мне", self.fp_payout_label)
         form_layout.addRow("Вывод ₽", self.withdraw_rub_label)
         form_layout.addRow("Вывод USDT", self.withdraw_usdt_label)
 
         layout = QVBoxLayout(group)
+        info_layout = QHBoxLayout()
+        info_layout.addStretch(1)
+        info_layout.addWidget(self.debug_button)
+        layout.addLayout(info_layout)
         layout.addLayout(form_layout)
         return group
 
@@ -246,7 +254,7 @@ class MainWindow(QMainWindow):
             [
                 "Name",
                 "Price (coins)",
-                "FP buyer (₽)",
+                "SBP buyer (₽)",
                 "FP payout me (₽)",
                 "Withdraw (USDT)",
                 "Withdraw (₽)",
@@ -286,14 +294,25 @@ class MainWindow(QMainWindow):
         self._refresh_goods_table()
 
     def open_settings(self) -> None:
-        dialog = SettingsDialog(self.config.funpay_fee, self.config.usdt_withdraw_fee, self)
+        dialog = SettingsDialog(
+            self.config.funpay_fee,
+            self.config.sbp_fee_effective,
+            self.config.withdraw_markup_pct,
+            self,
+        )
         if dialog.exec() == dialog.Accepted:
             funpay_fee = dialog.parse_percent(dialog.funpay_fee_input.text())
-            usdt_fee = dialog.parse_percent(dialog.usdt_withdraw_fee_input.text())
+            sbp_fee_effective = dialog.parse_percent(dialog.sbp_fee_effective_input.text())
+            withdraw_markup_pct = dialog.parse_percent(dialog.withdraw_markup_pct_input.text())
             self.config = replace(
                 self.config,
                 funpay_fee=funpay_fee if funpay_fee is not None else self.config.funpay_fee,
-                usdt_withdraw_fee=usdt_fee if usdt_fee is not None else self.config.usdt_withdraw_fee,
+                sbp_fee_effective=(
+                    sbp_fee_effective if sbp_fee_effective is not None else self.config.sbp_fee_effective
+                ),
+                withdraw_markup_pct=(
+                    withdraw_markup_pct if withdraw_markup_pct is not None else self.config.withdraw_markup_pct
+                ),
             )
             save_config(self.config)
             self._refresh_quick_calc()
@@ -320,9 +339,9 @@ class MainWindow(QMainWindow):
         settings = self._settings()
         coins_qty = _parse_positive_float(self.coins_qty_input.text())
         result = calc_quick(settings, coins_qty)
-        self.fp_buyer_label.setText(_format_rub(result.fp_price_rub_buyer))
+        self.fp_buyer_label.setText(_format_rub(result.sbp_price_rub_buyer))
         self.fp_payout_label.setText(_format_rub(result.fp_payout_rub_me))
-        self.withdraw_rub_label.setText(_format_rub(result.withdraw_rub_equiv))
+        self.withdraw_rub_label.setText(_format_rub(result.withdraw_rub))
         self.withdraw_usdt_label.setText(_format_usdt(result.withdraw_usdt))
 
     def add_goods(self) -> None:
@@ -366,10 +385,10 @@ class MainWindow(QMainWindow):
             values = [
                 item.name,
                 _format_coins(item.price_coins),
-                _format_rub(calc.fp_price_rub_buyer),
+                _format_rub(calc.sbp_price_rub_buyer),
                 _format_rub(calc.fp_payout_rub_me),
                 _format_usdt(calc.withdraw_usdt),
-                _format_rub(calc.withdraw_rub_equiv),
+                _format_rub(calc.withdraw_rub),
             ]
             for col, text in enumerate(values):
                 cell = QTableWidgetItem(text)
@@ -383,9 +402,30 @@ class MainWindow(QMainWindow):
             coin_to_adena=self.config.coin_to_adena,
             rub_per_1kk_buyer=self.config.rub_per_1kk_buyer,
             funpay_fee=self.config.funpay_fee,
-            usdt_withdraw_fee=self.config.usdt_withdraw_fee,
+            sbp_fee_effective=self.config.sbp_fee_effective,
+            withdraw_markup_pct=self.config.withdraw_markup_pct,
             rub_per_usdt=self.config.rub_per_usdt,
         )
+
+    def _show_debug_breakdown(self) -> None:
+        settings = self._settings()
+        coins_qty = _parse_positive_float(self.coins_qty_input.text())
+        rub_per_coin = calc_rub_per_coin_buyer(settings)
+        sbp_raw = coins_qty * rub_per_coin if coins_qty is not None and rub_per_coin is not None else None
+        result = calc_quick(settings, coins_qty)
+        lines = [
+            f"coins_qty: {_format_number(coins_qty) or '—'}",
+            f"rub_per_coin: {_format_number(rub_per_coin) or '—'}",
+            f"sbp_raw: {_format_rub(sbp_raw)}",
+            f"me_rub: {_format_rub(result.fp_payout_rub_me)}",
+            f"sbp_price_rub: {_format_rub(result.sbp_price_rub_buyer)}",
+            f"usdt_rub_rate: {_format_rub(settings.rub_per_usdt, suffix='')}",
+            f"withdraw_rub: {_format_rub(result.withdraw_rub)}",
+            f"withdraw_usdt: {_format_usdt(result.withdraw_usdt)}",
+            f"sbp_fee_effective: {_format_number(settings.sbp_fee_effective) or '—'}",
+            f"withdraw_markup_pct: {_format_number(settings.withdraw_markup_pct) or '—'}",
+        ]
+        QMessageBox.information(self, "Debug breakdown", "\n".join(lines))
 
 
 def _parse_positive_float(text: str) -> Optional[float]:
