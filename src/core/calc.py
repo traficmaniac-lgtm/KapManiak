@@ -101,10 +101,10 @@ def calc_quick(
 
 def calc_item(settings: Settings, price_coins: Optional[float]) -> ItemCalc:
     if not _has_positive(price_coins):
-        return ItemCalc(None, None, None, None, None, None)
+        return ItemCalc(None, None, None, None, None, None, None)
     rub_per_coin_buyer = calc_rub_per_coin_buyer(settings)
     if rub_per_coin_buyer is None:
-        return ItemCalc(None, None, None, None, None, None)
+        return ItemCalc(None, None, None, None, None, None, None)
 
     fp_price_rub_buyer = price_coins * rub_per_coin_buyer
     fp_payout_rub_me = fp_price_rub_buyer * (1 - settings.funpay_fee)
