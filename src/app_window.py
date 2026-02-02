@@ -107,7 +107,6 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("KapManiak — L2 Trade Helper")
-        self.resize(1200, 760)
 
         self.storage = Storage()
         self.params = self.storage.load_params()
