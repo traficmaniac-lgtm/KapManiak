@@ -255,39 +255,27 @@ class MainWindow(QMainWindow):
     def _build_withdraw_group(self) -> QGroupBox:
         group = QGroupBox("Вывод средств")
 
-        self.withdraw_amount_input = self._make_number_input("Сумма вывода (₽)")
-        self.withdraw_amount_edited = False
-        self.withdraw_amount_input.textEdited.connect(self._mark_withdraw_amount_edited)
-        self.withdraw_amount_input.editingFinished.connect(self._refresh_quick_calc)
-
         self.withdraw_rate_input = self._make_number_input("Курс вывода (₽/USDT)")
         self.withdraw_rate_input.editingFinished.connect(self._save_withdraw_rate)
 
-        self.withdraw_fee_label = QLabel("—")
-        self.withdraw_fee_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.withdraw_base_label = QLabel("—")
+        self.withdraw_base_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.withdraw_rub_label = QLabel("—")
         self.withdraw_rub_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.withdraw_usdt_label = QLabel("—")
         self.withdraw_usdt_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.withdraw_info_label = QLabel("")
-        self.withdraw_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.withdraw_info_label.setStyleSheet("color: #a9b4c2;")
 
         form_layout = QGridLayout()
         form_layout.setContentsMargins(14, 14, 14, 14)
         form_layout.setSpacing(10)
-        form_layout.addWidget(QLabel("Сумма вывода ₽"), 0, 0)
-        form_layout.addWidget(self.withdraw_amount_input, 0, 1)
-        form_layout.addWidget(QLabel("Курс вывода ₽/USDT"), 1, 0)
-        form_layout.addWidget(self.withdraw_rate_input, 1, 1)
-        form_layout.addWidget(QLabel("Комиссия"), 2, 0)
-        form_layout.addWidget(self.withdraw_info_label, 2, 1)
-        form_layout.addWidget(QLabel("Комиссия ₽"), 3, 0)
-        form_layout.addWidget(self.withdraw_fee_label, 3, 1)
-        form_layout.addWidget(QLabel("К выводу ₽"), 4, 0)
-        form_layout.addWidget(self.withdraw_rub_label, 4, 1)
-        form_layout.addWidget(QLabel("К получению USDT"), 5, 0)
-        form_layout.addWidget(self.withdraw_usdt_label, 5, 1)
+        form_layout.addWidget(QLabel("Курс вывода ₽/USDT"), 0, 0)
+        form_layout.addWidget(self.withdraw_rate_input, 0, 1)
+        form_layout.addWidget(QLabel("Сумма (База) ₽"), 1, 0)
+        form_layout.addWidget(self.withdraw_base_label, 1, 1)
+        form_layout.addWidget(QLabel("К выводу ₽"), 2, 0)
+        form_layout.addWidget(self.withdraw_rub_label, 2, 1)
+        form_layout.addWidget(QLabel("К получению USDT"), 3, 0)
+        form_layout.addWidget(self.withdraw_usdt_label, 3, 1)
         form_layout.setColumnStretch(1, 1)
 
         layout = QVBoxLayout(group)
@@ -339,7 +327,7 @@ class MainWindow(QMainWindow):
                 "База ₽",
                 "Карта RU ₽",
                 "СБП QR ₽",
-                "Сумма вывода ₽",
+                "К выводу ₽",
                 "К получению USDT",
             ]
         )
@@ -463,15 +451,11 @@ class MainWindow(QMainWindow):
         settings = self._settings()
         coins_qty = _parse_positive_float(self.coins_qty_input.text())
         base_rub_override = _parse_positive_float(self.base_rub_input.text())
-        withdraw_amount_override = _parse_positive_float(self.withdraw_amount_input.text())
         if not self.base_rub_input.text().strip():
             self.base_rub_edited = False
-        if not self.withdraw_amount_input.text().strip():
-            self.withdraw_amount_edited = False
-        result = calc_quick(settings, coins_qty, base_rub_override, withdraw_amount_override)
+        result = calc_quick(settings, coins_qty, base_rub_override)
         self.fp_payout_label.setText(_format_rub(result.fp_payout_rub_me))
         self._sync_default_value(self.base_rub_input, result.fp_payout_rub_me, self.base_rub_edited)
-        self._sync_default_value(self.withdraw_amount_input, result.fp_payout_rub_me, self.withdraw_amount_edited)
         self.card_label.setText(
             f"Банковская карта RU (+{_format_percent(settings.k_card_ru - 1)})"
             if settings.k_card_ru is not None
@@ -484,10 +468,9 @@ class MainWindow(QMainWindow):
         )
         self.card_price_label.setText(_format_rub(result.card_rub))
         self.sbp_price_label.setText(_format_rub(result.sbp_rub))
-        self.withdraw_fee_label.setText(_format_rub(result.withdraw_fee_rub))
-        self.withdraw_rub_label.setText(_format_rub(result.withdraw_rub))
+        self.withdraw_base_label.setText(_format_rub(result.withdraw_amount_rub))
+        self.withdraw_rub_label.setText(_format_rub(result.withdraw_amount_rub))
         self.withdraw_usdt_label.setText(_format_usdt(result.withdraw_usdt))
-        self._update_withdraw_info(settings)
 
     def add_goods(self) -> None:
         price_coins = _parse_positive_float(self.item_price_input.text())
@@ -566,7 +549,6 @@ class MainWindow(QMainWindow):
             settings,
             coins_qty,
             _parse_positive_float(self.base_rub_input.text()),
-            _parse_positive_float(self.withdraw_amount_input.text()),
         )
         lines = [
             f"coins_qty: {_format_number(coins_qty) or '—'}",
@@ -576,9 +558,8 @@ class MainWindow(QMainWindow):
             f"base_rub: {_format_rub(result.base_rub)}",
             f"card_rub: {_format_rub(result.card_rub)}",
             f"sbp_rub: {_format_rub(result.sbp_rub)}",
-            f"amount_rub: {_format_rub(result.withdraw_amount_rub)}",
             f"fee_rub: {_format_rub(result.withdraw_fee_rub)}",
-            f"net_rub: {_format_rub(result.withdraw_rub)}",
+            f"amount_rub: {_format_rub(result.withdraw_amount_rub)}",
             f"withdraw_rate_rub_per_usdt: {_format_rub(settings.withdraw_rate_rub_per_usdt, suffix='')}",
             f"withdraw_usdt: {_format_usdt(result.withdraw_usdt)}",
             f"sbp_fee_effective: {_format_number(settings.sbp_fee_effective) or '—'}",
@@ -591,9 +572,6 @@ class MainWindow(QMainWindow):
 
     def _mark_base_rub_edited(self) -> None:
         self.base_rub_edited = True
-
-    def _mark_withdraw_amount_edited(self) -> None:
-        self.withdraw_amount_edited = True
 
     def _sync_default_value(self, field: QLineEdit, value: Optional[float], edited: bool) -> None:
         if edited:
@@ -608,11 +586,6 @@ class MainWindow(QMainWindow):
         self._refresh_quick_calc()
         self._refresh_goods_table()
         self._persist_goods()
-
-    def _update_withdraw_info(self, settings: Settings) -> None:
-        fee_pct = settings.withdraw_fee_pct * 100
-        fee_min = _format_rub(settings.withdraw_fee_min_rub)
-        self.withdraw_info_label.setText(f"{fee_pct:.0f}%, но не менее {fee_min}")
 
     def _persist_goods(self) -> None:
         settings = self._settings()
