@@ -230,30 +230,44 @@ class MainWindow(QMainWindow):
         self.coins_qty_input = self._make_number_input("Кол-во монет")
         self.coins_qty_input.textChanged.connect(self._refresh_quick_calc)
 
-        self.fp_payout_label = self._make_value_label()
-        self.sbp_payout_label = self._make_value_label()
-        self.card_payout_label = self._make_value_label()
-        self.withdraw_payout_label = self._make_value_label()
-        self.withdraw_usdt_quick_label = self._make_value_label()
+        self.rub_per_coin_buyer_label = self._make_value_label()
+        self.rub_per_coin_me_label = self._make_value_label()
 
         form_layout = QGridLayout()
         form_layout.setHorizontalSpacing(10)
         form_layout.setVerticalSpacing(10)
         form_layout.addWidget(QLabel("Кол-во монет"), 0, 0)
         form_layout.addWidget(self.coins_qty_input, 0, 1)
-        form_layout.addWidget(QLabel("Мне ₽"), 1, 0)
-        form_layout.addWidget(self.fp_payout_label, 1, 1)
-        form_layout.addWidget(QLabel("СБП ₽"), 2, 0)
-        form_layout.addWidget(self.sbp_payout_label, 2, 1)
-        form_layout.addWidget(QLabel("Карта RU ₽"), 3, 0)
-        form_layout.addWidget(self.card_payout_label, 3, 1)
-        form_layout.addWidget(QLabel("К выводу ₽"), 4, 0)
-        form_layout.addWidget(self.withdraw_payout_label, 4, 1)
-        form_layout.addWidget(QLabel("К получению USDT"), 5, 0)
-        form_layout.addWidget(self.withdraw_usdt_quick_label, 5, 1)
+        form_layout.addWidget(QLabel("1 монета (покупатель)"), 1, 0)
+        form_layout.addWidget(self.rub_per_coin_buyer_label, 1, 1)
+        form_layout.addWidget(QLabel("1 монета (мне)"), 2, 0)
+        form_layout.addWidget(self.rub_per_coin_me_label, 2, 1)
         form_layout.setColumnStretch(1, 1)
 
+        self.quick_table = QTableWidget(1, 5)
+        self.quick_table.setHorizontalHeaderLabels(
+            [
+                "База ₽",
+                "Карта RU ₽",
+                "СБП QR ₽",
+                "Сумма вывода ₽",
+                "К получению USDT",
+            ]
+        )
+        self.quick_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.quick_table.setSelectionMode(QTableWidget.NoSelection)
+        self.quick_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.quick_table.verticalHeader().setVisible(False)
+        self.quick_table.setWordWrap(False)
+        self.quick_table.setTextElideMode(Qt.ElideMiddle)
+        quick_header = self.quick_table.horizontalHeader()
+        quick_header.setSectionResizeMode(QHeaderView.Stretch)
+        quick_header.setStretchLastSection(False)
+        quick_header.setMinimumSectionSize(120)
+        self.quick_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
         layout.addLayout(form_layout)
+        layout.addWidget(self.quick_table)
         return card
 
     def _build_buyer_prices_card(self) -> QFrame:
@@ -502,12 +516,26 @@ class MainWindow(QMainWindow):
             self.base_rub_edited = False
         if not self.withdraw_amount_input.text().strip():
             self.withdraw_amount_edited = False
+        rub_per_coin_buyer = calc_rub_per_coin_buyer(settings)
+        rub_per_coin_me = (
+            rub_per_coin_buyer * (1 - settings.funpay_fee) if rub_per_coin_buyer is not None else None
+        )
+        self.rub_per_coin_buyer_label.setText(_format_rub(rub_per_coin_buyer))
+        self.rub_per_coin_me_label.setText(_format_rub(rub_per_coin_me))
+        quick_calc = calc_item(settings, coins_qty)
+        quick_values = [
+            _format_rub(quick_calc.base_rub),
+            _format_rub(quick_calc.card_rub),
+            _format_rub(quick_calc.sbp_rub),
+            _format_rub(quick_calc.withdraw_amount_rub),
+            _format_usdt(quick_calc.withdraw_usdt),
+        ]
+        for col, text in enumerate(quick_values):
+            cell = QTableWidgetItem(text)
+            cell.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.quick_table.setItem(0, col, cell)
+
         result = calc_quick(settings, coins_qty, base_rub_override, withdraw_amount_override)
-        self.fp_payout_label.setText(_format_rub(result.fp_payout_rub_me))
-        self.sbp_payout_label.setText(_format_rub(result.sbp_rub))
-        self.card_payout_label.setText(_format_rub(result.card_rub))
-        self.withdraw_payout_label.setText(_format_rub(result.withdraw_rub))
-        self.withdraw_usdt_quick_label.setText(_format_usdt(result.withdraw_usdt))
         self._sync_default_value(self.base_rub_input, result.fp_payout_rub_me, self.base_rub_edited)
         self._sync_default_value(self.withdraw_amount_input, result.fp_payout_rub_me, self.withdraw_amount_edited)
         self.card_label.setText(
