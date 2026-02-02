@@ -18,23 +18,29 @@ class SettingsDialog(QDialog):
         self,
         funpay_fee: float,
         sbp_fee_effective: float,
+        k_card_ru: float,
+        k_sbp_qr: float,
         withdraw_fee_pct: float,
         withdraw_fee_min_rub: float,
         withdraw_rate_rub_per_usdt: Optional[float],
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Настройки комиссий")
+        self.setWindowTitle("Настройки")
         self.setModal(True)
 
         self.funpay_fee_input = self._make_percent_field("Комиссия FunPay (%)")
         self.sbp_fee_effective_input = self._make_percent_field("Эффективная комиссия СБП (%)")
+        self.k_card_ru_input = self._make_number_field("Коэф. карта RU")
+        self.k_sbp_qr_input = self._make_number_field("Коэф. СБП QR")
         self.withdraw_fee_pct_input = self._make_percent_field("Комиссия вывода (%)")
         self.withdraw_fee_min_rub_input = self._make_number_field("Мин. комиссия вывода (₽)")
         self.withdraw_rate_rub_per_usdt_input = self._make_number_field("Курс вывода (FP)")
 
         self.set_percent_value(self.funpay_fee_input, funpay_fee)
         self.set_percent_value(self.sbp_fee_effective_input, sbp_fee_effective)
+        self.set_number_value(self.k_card_ru_input, k_card_ru)
+        self.set_number_value(self.k_sbp_qr_input, k_sbp_qr)
         self.set_percent_value(self.withdraw_fee_pct_input, withdraw_fee_pct)
         self.set_number_value(self.withdraw_fee_min_rub_input, withdraw_fee_min_rub)
         self.set_number_value(self.withdraw_rate_rub_per_usdt_input, withdraw_rate_rub_per_usdt)
@@ -45,6 +51,8 @@ class SettingsDialog(QDialog):
         form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         form_layout.addRow("Комиссия FunPay (%)", self.funpay_fee_input)
         form_layout.addRow("Эффективная комиссия СБП (%)", self.sbp_fee_effective_input)
+        form_layout.addRow("Коэф. карта RU", self.k_card_ru_input)
+        form_layout.addRow("Коэф. СБП QR", self.k_sbp_qr_input)
         form_layout.addRow("Комиссия вывода (%)", self.withdraw_fee_pct_input)
         form_layout.addRow("Мин. комиссия вывода (₽)", self.withdraw_fee_min_rub_input)
         form_layout.addRow("Курс вывода (FP)", self.withdraw_rate_rub_per_usdt_input)
