@@ -207,7 +207,11 @@ class MainWindow(QMainWindow):
         self.sum_base_label = self._make_value_label()
         self.sum_sbp_label = self._make_value_label()
         self.sum_withdraw_rub_label = self._make_value_label()
+        self.withdraw_fee_rub_label = self._make_value_label()
         self.sum_withdraw_usdt_label = self._make_value_label()
+        self.withdraw_usdt_reason_label = QLabel("")
+        self.withdraw_usdt_reason_label.setObjectName("HintLabel")
+        self.withdraw_usdt_reason_label.setWordWrap(True)
 
         form_layout = QGridLayout()
         form_layout.setHorizontalSpacing(10)
@@ -228,8 +232,11 @@ class MainWindow(QMainWindow):
         form_layout.addWidget(self.sum_sbp_label, 6, 1)
         form_layout.addWidget(QLabel("К выводу ₽"), 7, 0)
         form_layout.addWidget(self.sum_withdraw_rub_label, 7, 1)
-        form_layout.addWidget(QLabel("К получению USDT"), 8, 0)
-        form_layout.addWidget(self.sum_withdraw_usdt_label, 8, 1)
+        form_layout.addWidget(QLabel("Комиссия ₽"), 8, 0)
+        form_layout.addWidget(self.withdraw_fee_rub_label, 8, 1)
+        form_layout.addWidget(QLabel("К получению USDT"), 9, 0)
+        form_layout.addWidget(self.sum_withdraw_usdt_label, 9, 1)
+        form_layout.addWidget(self.withdraw_usdt_reason_label, 10, 0, 1, 2)
         form_layout.setColumnStretch(1, 1)
 
         layout.addLayout(form_layout)
@@ -312,6 +319,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(buttons_layout)
         layout.addWidget(self.goods_hint)
         layout.addWidget(self.goods_table)
+        layout.addWidget(self._build_goods_totals())
         return card
 
     def _make_number_input(self, placeholder: str) -> QLineEdit:
@@ -327,6 +335,33 @@ class MainWindow(QMainWindow):
         label = QLabel("—")
         label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         return label
+
+    def _build_goods_totals(self) -> QFrame:
+        container, layout = self._build_card("Итого")
+
+        self.total_base_label = self._make_value_label()
+        self.total_card_label = self._make_value_label()
+        self.total_sbp_label = self._make_value_label()
+        self.total_withdraw_rub_label = self._make_value_label()
+        self.total_withdraw_usdt_label = self._make_value_label()
+
+        totals_layout = QGridLayout()
+        totals_layout.setHorizontalSpacing(10)
+        totals_layout.setVerticalSpacing(10)
+        totals_layout.addWidget(QLabel("База ₽"), 0, 0)
+        totals_layout.addWidget(self.total_base_label, 0, 1)
+        totals_layout.addWidget(QLabel("Карта RU ₽"), 1, 0)
+        totals_layout.addWidget(self.total_card_label, 1, 1)
+        totals_layout.addWidget(QLabel("СБП QR ₽"), 2, 0)
+        totals_layout.addWidget(self.total_sbp_label, 2, 1)
+        totals_layout.addWidget(QLabel("К выводу ₽"), 3, 0)
+        totals_layout.addWidget(self.total_withdraw_rub_label, 3, 1)
+        totals_layout.addWidget(QLabel("К получению USDT"), 4, 0)
+        totals_layout.addWidget(self.total_withdraw_usdt_label, 4, 1)
+        totals_layout.setColumnStretch(1, 1)
+
+        layout.addLayout(totals_layout)
+        return container
 
     def _load_config_to_fields(self) -> None:
         self.coin_to_adena_input.setText(_format_number(self.config.coin_to_adena))
@@ -428,7 +463,9 @@ class MainWindow(QMainWindow):
         self.sum_base_label.setText(_format_rub_total(quick.base_rub))
         self.sum_sbp_label.setText(_format_rub_total(quick.sbp_rub))
         self.sum_withdraw_rub_label.setText(_format_rub_total(quick.withdraw_amount_rub))
+        self.withdraw_fee_rub_label.setText(_format_rub_total(quick.withdraw_fee_rub))
         self.sum_withdraw_usdt_label.setText(_format_usdt_range(quick.withdraw_usdt))
+        self.withdraw_usdt_reason_label.setText(_withdraw_reason(quick.withdraw_amount_rub, quick.withdraw_fee_rub))
 
     def add_goods(self) -> None:
         price_coins = _parse_positive_float(self.item_price_input.text())
@@ -466,8 +503,18 @@ class MainWindow(QMainWindow):
     def _refresh_goods_table(self) -> None:
         self.goods_table.setRowCount(len(self.goods))
         settings = self._settings()
+        total_base = []
+        total_card = []
+        total_sbp = []
+        total_withdraw_rub = []
+        total_withdraw_usdt = []
         for row_index, item in enumerate(self.goods):
             calc = calc_item(settings, item.price_coins)
+            total_base.append(calc.base_rub)
+            total_card.append(calc.card_rub)
+            total_sbp.append(calc.sbp_rub)
+            total_withdraw_rub.append(calc.withdraw_amount_rub)
+            total_withdraw_usdt.append(calc.withdraw_usdt)
             values = [
                 item.name,
                 _format_coins(item.price_coins),
@@ -483,6 +530,27 @@ class MainWindow(QMainWindow):
                     cell.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.goods_table.setItem(row_index, col, cell)
         self.goods_table.resizeRowsToContents()
+        self._refresh_goods_totals(
+            _sum_values(total_base),
+            _sum_values(total_card),
+            _sum_values(total_sbp),
+            _sum_values(total_withdraw_rub),
+            _sum_values(total_withdraw_usdt),
+        )
+
+    def _refresh_goods_totals(
+        self,
+        base_rub: Optional[float],
+        card_rub: Optional[float],
+        sbp_rub: Optional[float],
+        withdraw_rub: Optional[float],
+        withdraw_usdt: Optional[float],
+    ) -> None:
+        self.total_base_label.setText(_format_rub(base_rub))
+        self.total_card_label.setText(_format_rub(card_rub))
+        self.total_sbp_label.setText(_format_rub(sbp_rub))
+        self.total_withdraw_rub_label.setText(_format_rub(withdraw_rub))
+        self.total_withdraw_usdt_label.setText(_format_usdt(withdraw_usdt))
 
     def export_goods(self) -> None:
         filename, _ = QFileDialog.getSaveFileName(
@@ -682,6 +750,34 @@ def _format_percent(value: Optional[float]) -> str:
     if value is None:
         return "—"
     return f"{value * 100:.2f}%"
+
+
+def _withdraw_reason(base_rub: Optional[float], fee_rub: Optional[float]) -> str:
+    if base_rub is None or fee_rub is None:
+        return ""
+    net_rub = base_rub - fee_rub
+    if net_rub > 0:
+        return ""
+    return f"Комиссия {_format_fee_rub(fee_rub)} превышает сумму вывода"
+
+
+def _format_fee_rub(value: Optional[float]) -> str:
+    if value is None:
+        return "—"
+    if float(value).is_integer():
+        return f"{int(value)} ₽"
+    return _format_rub_total(value)
+
+
+def _sum_values(values: List[Optional[float]]) -> Optional[float]:
+    total = 0.0
+    has_value = False
+    for value in values:
+        if value is None:
+            continue
+        total += value
+        has_value = True
+    return total if has_value else None
 
 
 def _autosize_columns(sheet: object) -> None:

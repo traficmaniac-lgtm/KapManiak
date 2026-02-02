@@ -84,7 +84,8 @@ def calc_quick(
             None,
         )
 
-    withdraw_usdt = (withdraw_amount_rub - fee_rub) / settings.withdraw_rate_rub_per_usdt
+    net_rub = withdraw_amount_rub - fee_rub
+    withdraw_usdt = max(net_rub, 0) / settings.withdraw_rate_rub_per_usdt
     return QuickCalc(
         fp_payout_rub_me,
         base_rub,
@@ -122,7 +123,8 @@ def calc_item(settings: Settings, price_coins: Optional[float]) -> ItemCalc:
     ):
         return ItemCalc(fp_payout_rub_me, base_rub, card_rub, sbp_rub, withdraw_amount_rub, None)
 
-    withdraw_usdt = (withdraw_amount_rub - fee_rub) / settings.withdraw_rate_rub_per_usdt
+    net_rub = withdraw_amount_rub - fee_rub
+    withdraw_usdt = max(net_rub, 0) / settings.withdraw_rate_rub_per_usdt
     return ItemCalc(
         fp_payout_rub_me,
         base_rub,
