@@ -15,7 +15,13 @@ from PySide6.QtWidgets import (
 
 class SettingsDialog(QDialog):
     def __init__(
-        self, funpay_fee: float, sbp_fee_effective: float, withdraw_markup_pct: float, parent=None
+        self,
+        funpay_fee: float,
+        sbp_fee_effective: float,
+        withdraw_fee_pct: float,
+        withdraw_fee_min_rub: float,
+        withdraw_rate_rub_per_usdt: Optional[float],
+        parent=None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Настройки комиссий")
@@ -23,11 +29,15 @@ class SettingsDialog(QDialog):
 
         self.funpay_fee_input = self._make_percent_field("Комиссия FunPay (%)")
         self.sbp_fee_effective_input = self._make_percent_field("Эффективная комиссия СБП (%)")
-        self.withdraw_markup_pct_input = self._make_percent_field("Наценка вывода (%)")
+        self.withdraw_fee_pct_input = self._make_percent_field("Комиссия вывода (%)")
+        self.withdraw_fee_min_rub_input = self._make_number_field("Мин. комиссия вывода (₽)")
+        self.withdraw_rate_rub_per_usdt_input = self._make_number_field("Курс вывода (FP)")
 
         self.set_percent_value(self.funpay_fee_input, funpay_fee)
         self.set_percent_value(self.sbp_fee_effective_input, sbp_fee_effective)
-        self.set_percent_value(self.withdraw_markup_pct_input, withdraw_markup_pct)
+        self.set_percent_value(self.withdraw_fee_pct_input, withdraw_fee_pct)
+        self.set_number_value(self.withdraw_fee_min_rub_input, withdraw_fee_min_rub)
+        self.set_number_value(self.withdraw_rate_rub_per_usdt_input, withdraw_rate_rub_per_usdt)
 
         form_layout = QFormLayout()
         form_layout.setContentsMargins(16, 16, 16, 8)
@@ -35,7 +45,9 @@ class SettingsDialog(QDialog):
         form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         form_layout.addRow("Комиссия FunPay (%)", self.funpay_fee_input)
         form_layout.addRow("Эффективная комиссия СБП (%)", self.sbp_fee_effective_input)
-        form_layout.addRow("Наценка вывода (%)", self.withdraw_markup_pct_input)
+        form_layout.addRow("Комиссия вывода (%)", self.withdraw_fee_pct_input)
+        form_layout.addRow("Мин. комиссия вывода (₽)", self.withdraw_fee_min_rub_input)
+        form_layout.addRow("Курс вывода (FP)", self.withdraw_rate_rub_per_usdt_input)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -54,6 +66,15 @@ class SettingsDialog(QDialog):
         field.setValidator(validator)
         return field
 
+    def _make_number_field(self, placeholder: str) -> QLineEdit:
+        field = QLineEdit()
+        field.setPlaceholderText(placeholder)
+        field.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        validator = QDoubleValidator(0.0, 1_000_000_000.0, 6, field)
+        validator.setNotation(QDoubleValidator.StandardNotation)
+        field.setValidator(validator)
+        return field
+
     @staticmethod
     def set_percent_value(field: QLineEdit, value: float) -> None:
         field.setText(f"{value * 100:.2f}")
@@ -68,3 +89,21 @@ class SettingsDialog(QDialog):
         except ValueError:
             return None
         return value / 100
+
+    @staticmethod
+    def set_number_value(field: QLineEdit, value: Optional[float]) -> None:
+        if value is None:
+            field.setText("")
+        else:
+            field.setText(f"{value:.6f}".rstrip("0").rstrip("."))
+
+    @staticmethod
+    def parse_number(text: str) -> Optional[float]:
+        normalized = text.replace(",", ".").strip()
+        if not normalized:
+            return None
+        try:
+            value = float(normalized)
+        except ValueError:
+            return None
+        return value
