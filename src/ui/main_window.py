@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QApplication,
-    QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QHeaderView,
+    QSizePolicy,
 )
 
 from src.core.calc import Settings, calc_item, calc_quick, calc_rub_per_coin_buyer
@@ -40,7 +42,7 @@ QGroupBox {
     border: 1px solid #262b33;
     border-radius: 10px;
     margin-top: 12px;
-    padding: 10px;
+    padding: 16px;
     background-color: #161a20;
 }
 QGroupBox::title {
@@ -118,6 +120,9 @@ class MainWindow(QMainWindow):
         splitter.setChildrenCollapsible(False)
 
         left_widget = QWidget()
+        left_widget.setMinimumWidth(420)
+        left_widget.setMaximumWidth(460)
+        left_widget.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(12)
@@ -130,8 +135,8 @@ class MainWindow(QMainWindow):
 
         splitter.addWidget(left_widget)
         splitter.addWidget(self._build_goods_group())
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
 
         main_layout.addWidget(splitter)
         self.setCentralWidget(central)
@@ -145,9 +150,9 @@ class MainWindow(QMainWindow):
         self.rate_label = QLabel("Курс USDT: —")
         self.status_label = QLabel("OFFLINE")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setStyleSheet("background-color: #6b2b2b; padding: 4px 10px; border-radius: 10px;")
+        self.status_label.setStyleSheet("background-color: #6b2b2b; padding: 2px 8px; border-radius: 10px;")
 
-        refresh_button = QPushButton("↻ Обновить")
+        refresh_button = QPushButton("Обновить")
         refresh_button.clicked.connect(self.update_rate)
 
         settings_button = QPushButton("⚙")
@@ -170,16 +175,21 @@ class MainWindow(QMainWindow):
         save_button = QPushButton("Сохранить")
         save_button.clicked.connect(self.save_params)
 
-        form_layout = QFormLayout()
-        form_layout.setContentsMargins(12, 12, 12, 12)
-        form_layout.setSpacing(8)
-        form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form_layout.addRow("1 монета = адены", self.coin_to_adena_input)
-        form_layout.addRow("1кк адены = ₽ (FP)", self.rub_per_1kk_input)
+        form_layout = QGridLayout()
+        form_layout.setContentsMargins(14, 14, 14, 14)
+        form_layout.setSpacing(10)
+        form_layout.addWidget(QLabel("1 монета = адены"), 0, 0)
+        form_layout.addWidget(self.coin_to_adena_input, 0, 1)
+        form_layout.addWidget(QLabel("1кк адены = ₽ (FP)"), 1, 0)
+        form_layout.addWidget(self.rub_per_1kk_input, 1, 1)
+        form_layout.setColumnStretch(1, 1)
 
         layout = QVBoxLayout(group)
         layout.addLayout(form_layout)
-        layout.addWidget(save_button, alignment=Qt.AlignRight)
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        button_row.addWidget(save_button)
+        layout.addLayout(button_row)
 
         self.coin_to_adena_input.editingFinished.connect(self.save_params)
         self.rub_per_1kk_input.editingFinished.connect(self.save_params)
@@ -196,12 +206,14 @@ class MainWindow(QMainWindow):
         self.debug_button.setFixedWidth(36)
         self.debug_button.clicked.connect(self._show_debug_breakdown)
 
-        form_layout = QFormLayout()
-        form_layout.setContentsMargins(12, 12, 12, 12)
-        form_layout.setSpacing(8)
-        form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form_layout.addRow("Кол-во монет", self.coins_qty_input)
-        form_layout.addRow("FP ₽ мне", self.fp_payout_label)
+        form_layout = QGridLayout()
+        form_layout.setContentsMargins(14, 14, 14, 14)
+        form_layout.setSpacing(10)
+        form_layout.addWidget(QLabel("Кол-во монет"), 0, 0)
+        form_layout.addWidget(self.coins_qty_input, 0, 1)
+        form_layout.addWidget(QLabel("FP ₽ мне"), 1, 0)
+        form_layout.addWidget(self.fp_payout_label, 1, 1)
+        form_layout.setColumnStretch(1, 1)
 
         layout = QVBoxLayout(group)
         info_layout = QHBoxLayout()
@@ -226,13 +238,16 @@ class MainWindow(QMainWindow):
         self.sbp_price_label = QLabel("—")
         self.sbp_price_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        form_layout = QFormLayout()
-        form_layout.setContentsMargins(12, 12, 12, 12)
-        form_layout.setSpacing(8)
-        form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form_layout.addRow("База витрины ₽", self.base_rub_input)
-        form_layout.addRow(self.card_label, self.card_price_label)
-        form_layout.addRow(self.sbp_label, self.sbp_price_label)
+        form_layout = QGridLayout()
+        form_layout.setContentsMargins(14, 14, 14, 14)
+        form_layout.setSpacing(10)
+        form_layout.addWidget(QLabel("База витрины ₽"), 0, 0)
+        form_layout.addWidget(self.base_rub_input, 0, 1)
+        form_layout.addWidget(self.card_label, 1, 0)
+        form_layout.addWidget(self.card_price_label, 1, 1)
+        form_layout.addWidget(self.sbp_label, 2, 0)
+        form_layout.addWidget(self.sbp_price_label, 2, 1)
+        form_layout.setColumnStretch(1, 1)
 
         layout = QVBoxLayout(group)
         layout.addLayout(form_layout)
@@ -256,22 +271,28 @@ class MainWindow(QMainWindow):
         self.withdraw_usdt_label = QLabel("—")
         self.withdraw_usdt_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.withdraw_info_label = QLabel("")
-        self.withdraw_info_label.setWordWrap(True)
+        self.withdraw_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.withdraw_info_label.setStyleSheet("color: #a9b4c2;")
 
-        form_layout = QFormLayout()
-        form_layout.setContentsMargins(12, 12, 12, 12)
-        form_layout.setSpacing(8)
-        form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form_layout.addRow("Сумма вывода ₽", self.withdraw_amount_input)
-        form_layout.addRow("Курс вывода ₽/USDT", self.withdraw_rate_input)
-        form_layout.addRow("Комиссия ₽", self.withdraw_fee_label)
-        form_layout.addRow("К выводу ₽", self.withdraw_rub_label)
-        form_layout.addRow("К получению USDT", self.withdraw_usdt_label)
+        form_layout = QGridLayout()
+        form_layout.setContentsMargins(14, 14, 14, 14)
+        form_layout.setSpacing(10)
+        form_layout.addWidget(QLabel("Сумма вывода ₽"), 0, 0)
+        form_layout.addWidget(self.withdraw_amount_input, 0, 1)
+        form_layout.addWidget(QLabel("Курс вывода ₽/USDT"), 1, 0)
+        form_layout.addWidget(self.withdraw_rate_input, 1, 1)
+        form_layout.addWidget(QLabel("Комиссия"), 2, 0)
+        form_layout.addWidget(self.withdraw_info_label, 2, 1)
+        form_layout.addWidget(QLabel("Комиссия ₽"), 3, 0)
+        form_layout.addWidget(self.withdraw_fee_label, 3, 1)
+        form_layout.addWidget(QLabel("К выводу ₽"), 4, 0)
+        form_layout.addWidget(self.withdraw_rub_label, 4, 1)
+        form_layout.addWidget(QLabel("К получению USDT"), 5, 0)
+        form_layout.addWidget(self.withdraw_usdt_label, 5, 1)
+        form_layout.setColumnStretch(1, 1)
 
         layout = QVBoxLayout(group)
         layout.addLayout(form_layout)
-        layout.addWidget(self.withdraw_info_label)
         return group
 
     def _build_goods_group(self) -> QGroupBox:
@@ -294,19 +315,21 @@ class MainWindow(QMainWindow):
         self.goods_hint.setObjectName("HintLabel")
         self.goods_hint.setWordWrap(True)
 
-        form_layout = QFormLayout()
-        form_layout.setContentsMargins(12, 12, 12, 0)
-        form_layout.setSpacing(8)
-        form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        form_layout.addRow("Товар", self.item_name_input)
-        form_layout.addRow("Цена (монеты)", self.item_price_input)
+        form_layout = QGridLayout()
+        form_layout.setContentsMargins(14, 14, 14, 0)
+        form_layout.setSpacing(10)
+        form_layout.addWidget(QLabel("Товар"), 0, 0)
+        form_layout.addWidget(self.item_name_input, 0, 1)
+        form_layout.addWidget(QLabel("Цена (монеты)"), 1, 0)
+        form_layout.addWidget(self.item_price_input, 1, 1)
+        form_layout.setColumnStretch(1, 1)
 
         buttons_layout = QHBoxLayout()
-        buttons_layout.setContentsMargins(12, 8, 12, 12)
-        buttons_layout.setSpacing(8)
-        buttons_layout.addWidget(add_button)
-        buttons_layout.addWidget(remove_button)
-        buttons_layout.addWidget(clear_button)
+        buttons_layout.setContentsMargins(14, 8, 14, 14)
+        buttons_layout.setSpacing(10)
+        for button in (add_button, remove_button, clear_button):
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            buttons_layout.addWidget(button)
         buttons_layout.addStretch(1)
 
         self.goods_table = QTableWidget(0, 7)
@@ -324,7 +347,14 @@ class MainWindow(QMainWindow):
         self.goods_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.goods_table.setSelectionMode(QTableWidget.SingleSelection)
         self.goods_table.verticalHeader().setVisible(False)
-        self.goods_table.horizontalHeader().setStretchLastSection(True)
+        self.goods_table.setWordWrap(False)
+        self.goods_table.setTextElideMode(Qt.ElideRight)
+        header = self.goods_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(90)
+        self.goods_table.setColumnWidth(0, 180)
+        self.goods_table.setColumnWidth(1, 140)
 
         layout = QVBoxLayout(group)
         layout.addLayout(form_layout)
@@ -405,7 +435,7 @@ class MainWindow(QMainWindow):
 
     def update_rate(self) -> None:
         self.status_label.setText("UPDATING")
-        self.status_label.setStyleSheet("background-color: #3a3f48; padding: 4px 10px; border-radius: 10px;")
+        self.status_label.setStyleSheet("background-color: #3a3f48; padding: 2px 8px; border-radius: 10px;")
         QApplication.processEvents()
         result = fetch_rate()
         if result.rate is not None:
@@ -419,10 +449,10 @@ class MainWindow(QMainWindow):
             )
             save_config(self.config)
             self.status_label.setText("OK")
-            self.status_label.setStyleSheet("background-color: #1f6f50; padding: 4px 10px; border-radius: 10px;")
+            self.status_label.setStyleSheet("background-color: #1f6f50; padding: 2px 8px; border-radius: 10px;")
         else:
             self.status_label.setText("OFFLINE")
-            self.status_label.setStyleSheet("background-color: #6b2b2b; padding: 4px 10px; border-radius: 10px;")
+            self.status_label.setStyleSheet("background-color: #6b2b2b; padding: 2px 8px; border-radius: 10px;")
         self.rate_label.setText(f"Курс USDT: {_format_rub(self.config.rub_per_usdt, suffix='')}")
         if not self.withdraw_rate_input.text().strip():
             self.withdraw_rate_input.setText(_format_number(self.config.withdraw_rate_rub_per_usdt))
@@ -583,10 +613,7 @@ class MainWindow(QMainWindow):
     def _update_withdraw_info(self, settings: Settings) -> None:
         fee_pct = settings.withdraw_fee_pct * 100
         fee_min = _format_rub(settings.withdraw_fee_min_rub)
-        rate = _format_rub(settings.withdraw_rate_rub_per_usdt, suffix="")
-        self.withdraw_info_label.setText(
-            f"Комиссия {fee_pct:.0f}%, но не менее {fee_min}; курс {rate} ₽/USDT"
-        )
+        self.withdraw_info_label.setText(f"{fee_pct:.0f}%, но не менее {fee_min}")
 
     def _persist_goods(self) -> None:
         settings = self._settings()
