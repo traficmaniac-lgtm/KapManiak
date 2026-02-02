@@ -10,7 +10,9 @@ class Settings:
     rub_per_1kk_buyer: Optional[float]
     funpay_fee: float
     sbp_fee_effective: float
-    withdraw_markup_pct: float
+    withdraw_fee_pct: float
+    withdraw_fee_min_rub: float
+    withdraw_rate_rub_per_usdt: Optional[float]
     rub_per_usdt: Optional[float]
 
 
@@ -18,6 +20,7 @@ class Settings:
 class QuickCalc:
     sbp_price_rub_buyer: Optional[float]
     fp_payout_rub_me: Optional[float]
+    withdraw_fee_rub: Optional[float]
     withdraw_rub: Optional[float]
     withdraw_usdt: Optional[float]
 
@@ -39,21 +42,25 @@ def calc_rub_per_coin_buyer(settings: Settings) -> Optional[float]:
 
 def calc_quick(settings: Settings, coins_qty: Optional[float]) -> QuickCalc:
     if not _has_positive(coins_qty):
-        return QuickCalc(None, None, None, None)
+        return QuickCalc(None, None, None, None, None)
     rub_per_coin_buyer = calc_rub_per_coin_buyer(settings)
     if rub_per_coin_buyer is None:
-        return QuickCalc(None, None, None, None)
+        return QuickCalc(None, None, None, None, None)
 
     fp_price_rub_buyer = coins_qty * rub_per_coin_buyer
     fp_payout_rub_me = fp_price_rub_buyer * (1 - settings.funpay_fee)
     sbp_price_rub_buyer = _calc_sbp_price(fp_payout_rub_me, settings.sbp_fee_effective)
-    withdraw_rub = _calc_withdraw_rub(fp_payout_rub_me, settings.withdraw_markup_pct)
+    fee_rub, withdraw_rub = _calc_withdraw_breakdown(
+        fp_payout_rub_me,
+        settings.withdraw_fee_pct,
+        settings.withdraw_fee_min_rub,
+    )
 
-    if not _has_positive(settings.rub_per_usdt) or withdraw_rub is None:
-        return QuickCalc(sbp_price_rub_buyer, fp_payout_rub_me, withdraw_rub, None)
+    if not _has_positive(settings.withdraw_rate_rub_per_usdt) or withdraw_rub is None:
+        return QuickCalc(sbp_price_rub_buyer, fp_payout_rub_me, fee_rub, withdraw_rub, None)
 
-    withdraw_usdt = withdraw_rub / settings.rub_per_usdt
-    return QuickCalc(sbp_price_rub_buyer, fp_payout_rub_me, withdraw_rub, withdraw_usdt)
+    withdraw_usdt = withdraw_rub / settings.withdraw_rate_rub_per_usdt
+    return QuickCalc(sbp_price_rub_buyer, fp_payout_rub_me, fee_rub, withdraw_rub, withdraw_usdt)
 
 
 def calc_item(settings: Settings, price_coins: Optional[float]) -> ItemCalc:
@@ -66,12 +73,16 @@ def calc_item(settings: Settings, price_coins: Optional[float]) -> ItemCalc:
     fp_price_rub_buyer = price_coins * rub_per_coin_buyer
     fp_payout_rub_me = fp_price_rub_buyer * (1 - settings.funpay_fee)
     sbp_price_rub_buyer = _calc_sbp_price(fp_payout_rub_me, settings.sbp_fee_effective)
-    withdraw_rub = _calc_withdraw_rub(fp_payout_rub_me, settings.withdraw_markup_pct)
+    _, withdraw_rub = _calc_withdraw_breakdown(
+        fp_payout_rub_me,
+        settings.withdraw_fee_pct,
+        settings.withdraw_fee_min_rub,
+    )
 
-    if not _has_positive(settings.rub_per_usdt) or withdraw_rub is None:
+    if not _has_positive(settings.withdraw_rate_rub_per_usdt) or withdraw_rub is None:
         return ItemCalc(sbp_price_rub_buyer, fp_payout_rub_me, None, withdraw_rub)
 
-    withdraw_usdt = withdraw_rub / settings.rub_per_usdt
+    withdraw_usdt = withdraw_rub / settings.withdraw_rate_rub_per_usdt
     return ItemCalc(sbp_price_rub_buyer, fp_payout_rub_me, withdraw_usdt, withdraw_rub)
 
 
@@ -87,7 +98,13 @@ def _calc_sbp_price(me_rub: Optional[float], sbp_fee_effective: Optional[float])
     return me_rub / (1 - sbp_fee_effective)
 
 
-def _calc_withdraw_rub(me_rub: Optional[float], withdraw_markup_pct: Optional[float]) -> Optional[float]:
-    if me_rub is None or withdraw_markup_pct is None:
-        return None
-    return me_rub * (1 + withdraw_markup_pct)
+def _calc_withdraw_breakdown(
+    me_rub: Optional[float],
+    withdraw_fee_pct: Optional[float],
+    withdraw_fee_min_rub: Optional[float],
+) -> tuple[Optional[float], Optional[float]]:
+    if me_rub is None or withdraw_fee_pct is None or withdraw_fee_min_rub is None:
+        return None, None
+    fee_rub = max(me_rub * withdraw_fee_pct, withdraw_fee_min_rub)
+    net_rub = me_rub - fee_rub
+    return fee_rub, net_rub
