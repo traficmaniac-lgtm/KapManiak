@@ -17,6 +17,8 @@ class AppConfig:
     rub_per_1kk_buyer: Optional[float] = None
     funpay_fee: float = 0.15
     sbp_fee_effective: float = 0.1309
+    k_card_ru: float = 1.2021277
+    k_sbp_qr: float = 1.1507128
     withdraw_fee_pct: float = 0.06
     withdraw_fee_min_rub: float = 150.0
     withdraw_rate_rub_per_usdt: Optional[float] = None
@@ -28,6 +30,11 @@ class GoodsItem:
     name: str
     price_coins: float
     created_at: str
+    base_rub: Optional[float] = None
+    card_rub: Optional[float] = None
+    sbp_rub: Optional[float] = None
+    withdraw_amount_rub: Optional[float] = None
+    withdraw_usdt: Optional[float] = None
 
 
 def load_config() -> AppConfig:
@@ -48,6 +55,8 @@ def load_config() -> AppConfig:
         rub_per_1kk_buyer=_to_optional_float(payload.get("rub_per_1kk_buyer")),
         funpay_fee=_to_float(payload.get("funpay_fee"), 0.15),
         sbp_fee_effective=_to_float(payload.get("sbp_fee_effective"), 0.1309),
+        k_card_ru=_to_float(payload.get("k_card_ru"), 1.2021277),
+        k_sbp_qr=_to_float(payload.get("k_sbp_qr"), 1.1507128),
         withdraw_fee_pct=_to_float(payload.get("withdraw_fee_pct"), 0.06),
         withdraw_fee_min_rub=_to_float(payload.get("withdraw_fee_min_rub"), 150.0),
         withdraw_rate_rub_per_usdt=withdraw_rate,
@@ -75,9 +84,25 @@ def load_goods() -> List[GoodsItem]:
         name = str(row.get("name") or "Без названия")
         price_coins = _to_optional_float(row.get("price_coins"))
         created_at = str(row.get("created_at") or "")
+        base_rub = _to_optional_float(row.get("base_rub"))
+        card_rub = _to_optional_float(row.get("card_rub"))
+        sbp_rub = _to_optional_float(row.get("sbp_rub"))
+        withdraw_amount_rub = _to_optional_float(row.get("withdraw_amount_rub"))
+        withdraw_usdt = _to_optional_float(row.get("withdraw_usdt"))
         if price_coins is None or price_coins <= 0:
             continue
-        items.append(GoodsItem(name=name, price_coins=price_coins, created_at=created_at))
+        items.append(
+            GoodsItem(
+                name=name,
+                price_coins=price_coins,
+                created_at=created_at,
+                base_rub=base_rub,
+                card_rub=card_rub,
+                sbp_rub=sbp_rub,
+                withdraw_amount_rub=withdraw_amount_rub,
+                withdraw_usdt=withdraw_usdt,
+            )
+        )
     return items
 
 

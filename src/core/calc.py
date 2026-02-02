@@ -10,6 +10,8 @@ class Settings:
     rub_per_1kk_buyer: Optional[float]
     funpay_fee: float
     sbp_fee_effective: float
+    k_card_ru: float
+    k_sbp_qr: float
     withdraw_fee_pct: float
     withdraw_fee_min_rub: float
     withdraw_rate_rub_per_usdt: Optional[float]
@@ -18,8 +20,11 @@ class Settings:
 
 @dataclass
 class QuickCalc:
-    sbp_price_rub_buyer: Optional[float]
     fp_payout_rub_me: Optional[float]
+    base_rub: Optional[float]
+    card_rub: Optional[float]
+    sbp_rub: Optional[float]
+    withdraw_amount_rub: Optional[float]
     withdraw_fee_rub: Optional[float]
     withdraw_rub: Optional[float]
     withdraw_usdt: Optional[float]
@@ -27,8 +32,11 @@ class QuickCalc:
 
 @dataclass
 class ItemCalc:
-    sbp_price_rub_buyer: Optional[float]
     fp_payout_rub_me: Optional[float]
+    base_rub: Optional[float]
+    card_rub: Optional[float]
+    sbp_rub: Optional[float]
+    withdraw_amount_rub: Optional[float]
     withdraw_usdt: Optional[float]
     withdraw_rub: Optional[float]
 
@@ -40,62 +48,93 @@ def calc_rub_per_coin_buyer(settings: Settings) -> Optional[float]:
     return settings.coin_to_adena * rub_per_1_adena
 
 
-def calc_quick(settings: Settings, coins_qty: Optional[float]) -> QuickCalc:
+def calc_quick(
+    settings: Settings,
+    coins_qty: Optional[float],
+    base_rub_override: Optional[float],
+    withdraw_amount_override: Optional[float],
+) -> QuickCalc:
     if not _has_positive(coins_qty):
-        return QuickCalc(None, None, None, None, None)
+        return QuickCalc(None, None, None, None, None, None, None, None)
     rub_per_coin_buyer = calc_rub_per_coin_buyer(settings)
     if rub_per_coin_buyer is None:
-        return QuickCalc(None, None, None, None, None)
+        return QuickCalc(None, None, None, None, None, None, None, None)
 
     fp_price_rub_buyer = coins_qty * rub_per_coin_buyer
     fp_payout_rub_me = fp_price_rub_buyer * (1 - settings.funpay_fee)
-    sbp_price_rub_buyer = _calc_sbp_price(fp_payout_rub_me, settings.sbp_fee_effective)
+    base_rub = base_rub_override if _has_positive(base_rub_override) else fp_payout_rub_me
+    card_rub = base_rub * settings.k_card_ru if _has_positive(base_rub) else None
+    sbp_rub = base_rub * settings.k_sbp_qr if _has_positive(base_rub) else None
+    withdraw_amount_rub = (
+        withdraw_amount_override if _has_positive(withdraw_amount_override) else fp_payout_rub_me
+    )
     fee_rub, withdraw_rub = _calc_withdraw_breakdown(
-        fp_payout_rub_me,
+        withdraw_amount_rub,
         settings.withdraw_fee_pct,
         settings.withdraw_fee_min_rub,
     )
 
     if not _has_positive(settings.withdraw_rate_rub_per_usdt) or withdraw_rub is None:
-        return QuickCalc(sbp_price_rub_buyer, fp_payout_rub_me, fee_rub, withdraw_rub, None)
+        return QuickCalc(
+            fp_payout_rub_me,
+            base_rub,
+            card_rub,
+            sbp_rub,
+            withdraw_amount_rub,
+            fee_rub,
+            withdraw_rub,
+            None,
+        )
 
     withdraw_usdt = withdraw_rub / settings.withdraw_rate_rub_per_usdt
-    return QuickCalc(sbp_price_rub_buyer, fp_payout_rub_me, fee_rub, withdraw_rub, withdraw_usdt)
+    return QuickCalc(
+        fp_payout_rub_me,
+        base_rub,
+        card_rub,
+        sbp_rub,
+        withdraw_amount_rub,
+        fee_rub,
+        withdraw_rub,
+        withdraw_usdt,
+    )
 
 
 def calc_item(settings: Settings, price_coins: Optional[float]) -> ItemCalc:
     if not _has_positive(price_coins):
-        return ItemCalc(None, None, None, None)
+        return ItemCalc(None, None, None, None, None, None)
     rub_per_coin_buyer = calc_rub_per_coin_buyer(settings)
     if rub_per_coin_buyer is None:
-        return ItemCalc(None, None, None, None)
+        return ItemCalc(None, None, None, None, None, None)
 
     fp_price_rub_buyer = price_coins * rub_per_coin_buyer
     fp_payout_rub_me = fp_price_rub_buyer * (1 - settings.funpay_fee)
-    sbp_price_rub_buyer = _calc_sbp_price(fp_payout_rub_me, settings.sbp_fee_effective)
+    base_rub = fp_payout_rub_me
+    card_rub = base_rub * settings.k_card_ru if _has_positive(base_rub) else None
+    sbp_rub = base_rub * settings.k_sbp_qr if _has_positive(base_rub) else None
+    withdraw_amount_rub = fp_payout_rub_me
     _, withdraw_rub = _calc_withdraw_breakdown(
-        fp_payout_rub_me,
+        withdraw_amount_rub,
         settings.withdraw_fee_pct,
         settings.withdraw_fee_min_rub,
     )
 
     if not _has_positive(settings.withdraw_rate_rub_per_usdt) or withdraw_rub is None:
-        return ItemCalc(sbp_price_rub_buyer, fp_payout_rub_me, None, withdraw_rub)
+        return ItemCalc(fp_payout_rub_me, base_rub, card_rub, sbp_rub, withdraw_amount_rub, None, withdraw_rub)
 
     withdraw_usdt = withdraw_rub / settings.withdraw_rate_rub_per_usdt
-    return ItemCalc(sbp_price_rub_buyer, fp_payout_rub_me, withdraw_usdt, withdraw_rub)
+    return ItemCalc(
+        fp_payout_rub_me,
+        base_rub,
+        card_rub,
+        sbp_rub,
+        withdraw_amount_rub,
+        withdraw_usdt,
+        withdraw_rub,
+    )
 
 
 def _has_positive(value: Optional[float]) -> bool:
     return value is not None and value > 0
-
-
-def _calc_sbp_price(me_rub: Optional[float], sbp_fee_effective: Optional[float]) -> Optional[float]:
-    if me_rub is None or sbp_fee_effective is None:
-        return None
-    if sbp_fee_effective >= 1:
-        return None
-    return me_rub / (1 - sbp_fee_effective)
 
 
 def _calc_withdraw_breakdown(
