@@ -14,23 +14,28 @@ from PySide6.QtWidgets import (
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, funpay_fee: float, usdt_withdraw_fee: float, parent=None) -> None:
+    def __init__(
+        self, funpay_fee: float, sbp_fee_effective: float, withdraw_markup_pct: float, parent=None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Настройки комиссий")
         self.setModal(True)
 
         self.funpay_fee_input = self._make_percent_field("Комиссия FunPay (%)")
-        self.usdt_withdraw_fee_input = self._make_percent_field("Комиссия вывода USDT (%)")
+        self.sbp_fee_effective_input = self._make_percent_field("Эффективная комиссия СБП (%)")
+        self.withdraw_markup_pct_input = self._make_percent_field("Наценка вывода (%)")
 
         self.set_percent_value(self.funpay_fee_input, funpay_fee)
-        self.set_percent_value(self.usdt_withdraw_fee_input, usdt_withdraw_fee)
+        self.set_percent_value(self.sbp_fee_effective_input, sbp_fee_effective)
+        self.set_percent_value(self.withdraw_markup_pct_input, withdraw_markup_pct)
 
         form_layout = QFormLayout()
         form_layout.setContentsMargins(16, 16, 16, 8)
         form_layout.setSpacing(10)
         form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         form_layout.addRow("Комиссия FunPay (%)", self.funpay_fee_input)
-        form_layout.addRow("Комиссия вывода USDT (%)", self.usdt_withdraw_fee_input)
+        form_layout.addRow("Эффективная комиссия СБП (%)", self.sbp_fee_effective_input)
+        form_layout.addRow("Наценка вывода (%)", self.withdraw_markup_pct_input)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
