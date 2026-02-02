@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -24,7 +23,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 
-from src.core.calc import Settings, calc_item, calc_quick, calc_rub_per_coin_buyer
+from src.core.calc import Settings, calc_item, calc_rub_per_coin_buyer
 from src.core.config import GoodsItem, load_config, load_goods, new_goods_item, save_config, save_goods
 from src.services.rate_service import fetch_rate
 from src.ui.settings_dialog import SettingsDialog
@@ -132,9 +131,6 @@ class MainWindow(QMainWindow):
         left_layout.setSpacing(12)
 
         left_layout.addWidget(self._build_params_card())
-        left_layout.addWidget(self._build_quick_card())
-        left_layout.addWidget(self._build_buyer_prices_card())
-        left_layout.addWidget(self._build_withdraw_card())
         left_layout.addStretch(1)
 
         left_scroll.setWidget(left_container)
@@ -192,10 +188,15 @@ class MainWindow(QMainWindow):
         return card, card_layout
 
     def _build_params_card(self) -> QFrame:
-        card, layout = self._build_card("Курс / Параметры")
+        card, layout = self._build_card("Расчёт")
 
         self.coin_to_adena_input = self._make_number_input("1 монета = X адены")
         self.rub_per_1kk_input = self._make_number_input("1кк адены = ₽")
+        self.coins_qty_input = self._make_number_input("Кол-во монет")
+        self.coins_qty_input.textChanged.connect(self._refresh_quick_calc)
+
+        self.rub_per_coin_base_label = self._make_value_label()
+        self.rub_per_coin_sbp_label = self._make_value_label()
 
         form_layout = QGridLayout()
         form_layout.setHorizontalSpacing(10)
@@ -204,135 +205,20 @@ class MainWindow(QMainWindow):
         form_layout.addWidget(self.coin_to_adena_input, 0, 1)
         form_layout.addWidget(QLabel("1кк адены = ₽ (FP)"), 1, 0)
         form_layout.addWidget(self.rub_per_1kk_input, 1, 1)
-        form_layout.setColumnStretch(1, 1)
-
-        save_button = QPushButton("Сохранить")
-        save_button.clicked.connect(self.save_params)
-
-        button_row = QHBoxLayout()
-        button_row.addStretch(1)
-        button_row.addWidget(save_button)
-
-        layout.addLayout(form_layout)
-        layout.addLayout(button_row)
-
-        self.coin_to_adena_input.editingFinished.connect(self.save_params)
-        self.rub_per_1kk_input.editingFinished.connect(self.save_params)
-        return card
-
-    def _build_quick_card(self) -> QFrame:
-        self.debug_button = QPushButton("i")
-        self.debug_button.setFixedWidth(28)
-        self.debug_button.clicked.connect(self._show_debug_breakdown)
-
-        card, layout = self._build_card("Быстрый расчёт", self.debug_button)
-
-        self.coins_qty_input = self._make_number_input("Кол-во монет")
-        self.coins_qty_input.textChanged.connect(self._refresh_quick_calc)
-
-        self.rub_per_coin_buyer_label = self._make_value_label()
-        self.rub_per_coin_me_label = self._make_value_label()
-
-        form_layout = QGridLayout()
-        form_layout.setHorizontalSpacing(10)
-        form_layout.setVerticalSpacing(10)
-        form_layout.addWidget(QLabel("Кол-во монет"), 0, 0)
-        form_layout.addWidget(self.coins_qty_input, 0, 1)
-        form_layout.addWidget(QLabel("1 монета (покупатель)"), 1, 0)
-        form_layout.addWidget(self.rub_per_coin_buyer_label, 1, 1)
-        form_layout.addWidget(QLabel("1 монета (мне)"), 2, 0)
-        form_layout.addWidget(self.rub_per_coin_me_label, 2, 1)
-        form_layout.setColumnStretch(1, 1)
-
-        self.quick_table = QTableWidget(1, 5)
-        self.quick_table.setHorizontalHeaderLabels(
-            [
-                "База ₽",
-                "Карта RU ₽",
-                "СБП QR ₽",
-                "Сумма вывода ₽",
-                "К получению USDT",
-            ]
-        )
-        self.quick_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.quick_table.setSelectionMode(QTableWidget.NoSelection)
-        self.quick_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.quick_table.verticalHeader().setVisible(False)
-        self.quick_table.setWordWrap(False)
-        self.quick_table.setTextElideMode(Qt.ElideMiddle)
-        quick_header = self.quick_table.horizontalHeader()
-        quick_header.setSectionResizeMode(QHeaderView.Stretch)
-        quick_header.setStretchLastSection(False)
-        quick_header.setMinimumSectionSize(120)
-        self.quick_table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-
-        layout.addLayout(form_layout)
-        layout.addWidget(self.quick_table)
-        return card
-
-    def _build_buyer_prices_card(self) -> QFrame:
-        card, layout = self._build_card("Цены для покупателей")
-
-        self.base_rub_input = self._make_number_input("База витрины ₽")
-        self.base_rub_edited = False
-        self.base_rub_input.textEdited.connect(self._mark_base_rub_edited)
-        self.base_rub_input.editingFinished.connect(self._refresh_quick_calc)
-
-        self.card_label = QLabel("Карта RU (+—)")
-        self.card_price_label = self._make_value_label()
-        self.sbp_label = QLabel("СБП QR (+—)")
-        self.sbp_price_label = self._make_value_label()
-
-        form_layout = QGridLayout()
-        form_layout.setHorizontalSpacing(10)
-        form_layout.setVerticalSpacing(10)
-        form_layout.addWidget(QLabel("База витрины ₽"), 0, 0)
-        form_layout.addWidget(self.base_rub_input, 0, 1)
-        form_layout.addWidget(self.card_label, 1, 0)
-        form_layout.addWidget(self.card_price_label, 1, 1)
-        form_layout.addWidget(self.sbp_label, 2, 0)
-        form_layout.addWidget(self.sbp_price_label, 2, 1)
+        form_layout.addWidget(QLabel("Кол-во монет"), 2, 0)
+        form_layout.addWidget(self.coins_qty_input, 2, 1)
+        form_layout.addWidget(QLabel("1 монета (База) ="), 3, 0)
+        form_layout.addWidget(self.rub_per_coin_base_label, 3, 1)
+        form_layout.addWidget(QLabel("1 монета (СБП) ="), 4, 0)
+        form_layout.addWidget(self.rub_per_coin_sbp_label, 4, 1)
         form_layout.setColumnStretch(1, 1)
 
         layout.addLayout(form_layout)
-        return card
-
-    def _build_withdraw_card(self) -> QFrame:
-        card, layout = self._build_card("Вывод средств")
-
-        self.withdraw_amount_input = self._make_number_input("Сумма вывода ₽")
-        self.withdraw_amount_edited = False
-        self.withdraw_amount_input.textEdited.connect(self._mark_withdraw_amount_edited)
-        self.withdraw_amount_input.editingFinished.connect(self._refresh_quick_calc)
-
-        self.withdraw_rate_input = self._make_number_input("Курс вывода ₽/USDT")
-        self.withdraw_rate_input.editingFinished.connect(self._save_withdraw_rate)
-
-        self.withdraw_fee_label = self._make_value_label()
-        self.withdraw_rub_label = self._make_value_label()
-        self.withdraw_usdt_label = self._make_value_label()
-        self.withdraw_info_label = QLabel("")
-        self.withdraw_info_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.withdraw_info_label.setStyleSheet("color: #a9b4c2;")
-
-        form_layout = QGridLayout()
-        form_layout.setHorizontalSpacing(10)
-        form_layout.setVerticalSpacing(10)
-        form_layout.addWidget(QLabel("Сумма вывода ₽"), 0, 0)
-        form_layout.addWidget(self.withdraw_amount_input, 0, 1)
-        form_layout.addWidget(QLabel("Курс вывода ₽/USDT"), 1, 0)
-        form_layout.addWidget(self.withdraw_rate_input, 1, 1)
-        form_layout.addWidget(QLabel("Комиссия"), 2, 0)
-        form_layout.addWidget(self.withdraw_info_label, 2, 1)
-        form_layout.addWidget(QLabel("Комиссия ₽"), 3, 0)
-        form_layout.addWidget(self.withdraw_fee_label, 3, 1)
-        form_layout.addWidget(QLabel("К выводу ₽"), 4, 0)
-        form_layout.addWidget(self.withdraw_rub_label, 4, 1)
-        form_layout.addWidget(QLabel("К получению USDT"), 5, 0)
-        form_layout.addWidget(self.withdraw_usdt_label, 5, 1)
-        form_layout.setColumnStretch(1, 1)
-
-        layout.addLayout(form_layout)
+        self.params_save_timer = QTimer(self)
+        self.params_save_timer.setSingleShot(True)
+        self.params_save_timer.timeout.connect(self.save_params)
+        self.coin_to_adena_input.textChanged.connect(self._schedule_save_params)
+        self.rub_per_1kk_input.textChanged.connect(self._schedule_save_params)
         return card
 
     def _build_goods_card(self) -> QFrame:
@@ -422,7 +308,6 @@ class MainWindow(QMainWindow):
     def _load_config_to_fields(self) -> None:
         self.coin_to_adena_input.setText(_format_number(self.config.coin_to_adena))
         self.rub_per_1kk_input.setText(_format_number(self.config.rub_per_1kk_buyer))
-        self.withdraw_rate_input.setText(_format_number(self.config.withdraw_rate_rub_per_usdt))
 
     def save_params(self) -> None:
         coin_to_adena = _parse_positive_float(self.coin_to_adena_input.text())
@@ -475,7 +360,6 @@ class MainWindow(QMainWindow):
                 ),
             )
             save_config(self.config)
-            self.withdraw_rate_input.setText(_format_number(self.config.withdraw_rate_rub_per_usdt))
             self._refresh_quick_calc()
             self._refresh_goods_table()
             self._persist_goods()
@@ -501,59 +385,20 @@ class MainWindow(QMainWindow):
             self.status_label.setText("NO")
             self.status_label.setStyleSheet("background-color: #6b2b2b; padding: 2px 8px; border-radius: 10px;")
         self.rate_label.setText(f"Курс USDT: {_format_rub(self.config.rub_per_usdt, suffix=' ₽')}")
-        if not self.withdraw_rate_input.text().strip():
-            self.withdraw_rate_input.setText(_format_number(self.config.withdraw_rate_rub_per_usdt))
         self._refresh_quick_calc()
         self._refresh_goods_table()
         self._persist_goods()
 
     def _refresh_quick_calc(self) -> None:
         settings = self._settings()
-        coins_qty = _parse_positive_float(self.coins_qty_input.text())
-        base_rub_override = _parse_positive_float(self.base_rub_input.text())
-        withdraw_amount_override = _parse_positive_float(self.withdraw_amount_input.text())
-        if not self.base_rub_input.text().strip():
-            self.base_rub_edited = False
-        if not self.withdraw_amount_input.text().strip():
-            self.withdraw_amount_edited = False
         rub_per_coin_buyer = calc_rub_per_coin_buyer(settings)
         rub_per_coin_me = (
             rub_per_coin_buyer * (1 - settings.funpay_fee) if rub_per_coin_buyer is not None else None
         )
-        self.rub_per_coin_buyer_label.setText(_format_rub(rub_per_coin_buyer))
-        self.rub_per_coin_me_label.setText(_format_rub(rub_per_coin_me))
-        quick_calc = calc_item(settings, coins_qty)
-        quick_values = [
-            _format_rub(quick_calc.base_rub),
-            _format_rub(quick_calc.card_rub),
-            _format_rub(quick_calc.sbp_rub),
-            _format_rub(quick_calc.withdraw_amount_rub),
-            _format_usdt(quick_calc.withdraw_usdt),
-        ]
-        for col, text in enumerate(quick_values):
-            cell = QTableWidgetItem(text)
-            cell.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.quick_table.setItem(0, col, cell)
-
-        result = calc_quick(settings, coins_qty, base_rub_override, withdraw_amount_override)
-        self._sync_default_value(self.base_rub_input, result.fp_payout_rub_me, self.base_rub_edited)
-        self._sync_default_value(self.withdraw_amount_input, result.fp_payout_rub_me, self.withdraw_amount_edited)
-        self.card_label.setText(
-            f"Карта RU (+{_format_percent(settings.k_card_ru - 1)})"
-            if settings.k_card_ru is not None
-            else "Карта RU"
-        )
-        self.sbp_label.setText(
-            f"СБП QR (+{_format_percent(settings.k_sbp_qr - 1)})"
-            if settings.k_sbp_qr is not None
-            else "СБП QR"
-        )
-        self.card_price_label.setText(_format_rub(result.card_rub))
-        self.sbp_price_label.setText(_format_rub(result.sbp_rub))
-        self.withdraw_fee_label.setText(_format_rub(result.withdraw_fee_rub))
-        self.withdraw_rub_label.setText(_format_rub(result.withdraw_rub))
-        self.withdraw_usdt_label.setText(_format_usdt(result.withdraw_usdt))
-        self._update_withdraw_info(settings)
+        sbp_multiplier = settings.k_sbp_qr or None
+        rub_per_coin_sbp = rub_per_coin_me * sbp_multiplier if rub_per_coin_me is not None else None
+        self.rub_per_coin_base_label.setText(_format_rub(rub_per_coin_me))
+        self.rub_per_coin_sbp_label.setText(_format_rub(rub_per_coin_sbp))
 
     def add_goods(self) -> None:
         price_coins = _parse_positive_float(self.item_price_input.text())
@@ -623,62 +468,8 @@ class MainWindow(QMainWindow):
             rub_per_usdt=self.config.rub_per_usdt,
         )
 
-    def _show_debug_breakdown(self) -> None:
-        settings = self._settings()
-        coins_qty = _parse_positive_float(self.coins_qty_input.text())
-        rub_per_coin = calc_rub_per_coin_buyer(settings)
-        sbp_raw = coins_qty * rub_per_coin if coins_qty is not None and rub_per_coin is not None else None
-        result = calc_quick(
-            settings,
-            coins_qty,
-            _parse_positive_float(self.base_rub_input.text()),
-            _parse_positive_float(self.withdraw_amount_input.text()),
-        )
-        lines = [
-            f"coins_qty: {_format_number(coins_qty) or '—'}",
-            f"rub_per_coin: {_format_number(rub_per_coin) or '—'}",
-            f"sbp_raw: {_format_rub(sbp_raw)}",
-            f"me_rub: {_format_rub(result.fp_payout_rub_me)}",
-            f"base_rub: {_format_rub(result.base_rub)}",
-            f"card_rub: {_format_rub(result.card_rub)}",
-            f"sbp_rub: {_format_rub(result.sbp_rub)}",
-            f"amount_rub: {_format_rub(result.withdraw_amount_rub)}",
-            f"fee_rub: {_format_rub(result.withdraw_fee_rub)}",
-            f"net_rub: {_format_rub(result.withdraw_rub)}",
-            f"withdraw_rate_rub_per_usdt: {_format_rub(settings.withdraw_rate_rub_per_usdt, suffix='')}",
-            f"withdraw_usdt: {_format_usdt(result.withdraw_usdt)}",
-            f"sbp_fee_effective: {_format_number(settings.sbp_fee_effective) or '—'}",
-            f"k_card_ru: {_format_number(settings.k_card_ru) or '—'}",
-            f"k_sbp_qr: {_format_number(settings.k_sbp_qr) or '—'}",
-            f"withdraw_fee_pct: {_format_number(settings.withdraw_fee_pct) or '—'}",
-            f"withdraw_fee_min_rub: {_format_number(settings.withdraw_fee_min_rub) or '—'}",
-        ]
-        QMessageBox.information(self, "Debug breakdown", "\n".join(lines))
-
-    def _mark_base_rub_edited(self) -> None:
-        self.base_rub_edited = True
-
-    def _mark_withdraw_amount_edited(self) -> None:
-        self.withdraw_amount_edited = True
-
-    def _sync_default_value(self, field: QLineEdit, value: Optional[float], edited: bool) -> None:
-        if edited:
-            return
-        field.setText(_format_number(value))
-
-    def _save_withdraw_rate(self) -> None:
-        withdraw_rate = _parse_positive_float(self.withdraw_rate_input.text())
-        self.config = replace(self.config, withdraw_rate_rub_per_usdt=withdraw_rate)
-        save_config(self.config)
-        self.withdraw_rate_input.setText(_format_number(self.config.withdraw_rate_rub_per_usdt))
-        self._refresh_quick_calc()
-        self._refresh_goods_table()
-        self._persist_goods()
-
-    def _update_withdraw_info(self, settings: Settings) -> None:
-        fee_pct = settings.withdraw_fee_pct * 100
-        fee_min = _format_rub(settings.withdraw_fee_min_rub)
-        self.withdraw_info_label.setText(f"{fee_pct:.0f}%, но не менее {fee_min}")
+    def _schedule_save_params(self) -> None:
+        self.params_save_timer.start(300)
 
     def _persist_goods(self) -> None:
         settings = self._settings()
@@ -723,7 +514,16 @@ def _format_coins(value: Optional[float]) -> str:
 def _format_rub(value: Optional[float], suffix: str = " ₽") -> str:
     if value is None:
         return "—"
-    return f"{value:,.2f}{suffix}".replace(",", " ")
+    if abs(value) < 1:
+        formatted = f"{value:,.4f}"
+        whole, _, frac = formatted.partition(".")
+        frac = frac.rstrip("0")
+        if len(frac) < 2:
+            frac = frac.ljust(2, "0")
+        formatted = f"{whole}.{frac}"
+    else:
+        formatted = f"{value:,.2f}"
+    return f"{formatted}{suffix}".replace(",", " ")
 
 
 def _format_usdt(value: Optional[float]) -> str:
