@@ -292,7 +292,7 @@ class MainWindow(QMainWindow):
                 "База ₽",
                 "Карта RU ₽",
                 "СБП QR ₽",
-                "Сумма вывода ₽",
+                "К выводу ₽",
                 "К получению USDT",
             ]
         )
@@ -424,10 +424,10 @@ class MainWindow(QMainWindow):
         self.rub_per_coin_sbp_label.setText(_format_rub(rub_per_coin_sbp))
 
         coins_qty = _parse_positive_float(self.coins_qty_input.text())
-        quick = calc_quick(settings, coins_qty, None, None)
+        quick = calc_quick(settings, coins_qty, None)
         self.sum_base_label.setText(_format_rub_total(quick.base_rub))
         self.sum_sbp_label.setText(_format_rub_total(quick.sbp_rub))
-        self.sum_withdraw_rub_label.setText(_format_rub_total(quick.withdraw_rub))
+        self.sum_withdraw_rub_label.setText(_format_rub_total(quick.withdraw_amount_rub))
         self.sum_withdraw_usdt_label.setText(_format_usdt_range(quick.withdraw_usdt))
 
     def add_goods(self) -> None:
@@ -508,7 +508,7 @@ class MainWindow(QMainWindow):
             "База ₽",
             "Карта RU ₽",
             "СБП QR ₽",
-            "Сумма вывода ₽",
+            "К выводу ₽",
             "К получению USDT",
         ]
         items_sheet.append(headers)
