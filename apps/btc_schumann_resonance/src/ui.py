@@ -17,9 +17,10 @@ from .ws_client import WSClient, WSDataStore
 class RuntimeState:
     paused: bool = False
     field_mode: bool = True
-    fade_alpha: int = 10
+    fade_alpha: int = 4
     energy_gain: float = 1.8
-    gamma: float = 0.65
+    energy_floor: float = 0.08
+    gamma: float = 0.6
     crown_gain: float = 1.4
     palette_base: float = 0.60
     palette_shift: float = 0.0
@@ -74,7 +75,7 @@ class ResonanceWidget(QWidget):
             self.state.paused = not self.state.paused
         elif event.key() == Qt.Key_C:
             self.renderer.clear()
-        elif event.key() == Qt.Key_F:
+        elif event.key() == Qt.Key_M:
             self.state.field_mode = not self.state.field_mode
             self.config.field_mode = self.state.field_mode
         elif event.key() in (Qt.Key_Plus, Qt.Key_Equal):
@@ -83,12 +84,23 @@ class ResonanceWidget(QWidget):
         elif event.key() in (Qt.Key_Minus, Qt.Key_Underscore):
             self.state.energy_gain = max(0.8, self.state.energy_gain - 0.1)
             self.config.energy_gain = self.state.energy_gain
-        elif event.key() in (Qt.Key_BracketLeft, Qt.Key_BracketRight):
-            if event.key() == Qt.Key_BracketLeft:
-                self.state.gamma = max(0.45, self.state.gamma - 0.02)
+        elif event.key() in (Qt.Key_E, Qt.Key_D):
+            if event.key() == Qt.Key_E:
+                self.state.energy_floor = min(0.12, self.state.energy_floor + 0.01)
             else:
-                self.state.gamma = min(0.85, self.state.gamma + 0.02)
+                self.state.energy_floor = max(0.04, self.state.energy_floor - 0.01)
+            self.config.energy_floor = self.state.energy_floor
+        elif event.key() in (Qt.Key_G, Qt.Key_H):
+            if event.key() == Qt.Key_G:
+                self.state.gamma = max(0.45, self.state.gamma - 0.05)
+            else:
+                self.state.gamma = min(0.7, self.state.gamma + 0.05)
             self.config.gamma = self.state.gamma
+        elif event.key() in (Qt.Key_F, Qt.Key_V):
+            if event.key() == Qt.Key_F:
+                self.state.fade_alpha = min(10, self.state.fade_alpha + 1)
+            else:
+                self.state.fade_alpha = max(0, self.state.fade_alpha - 1)
         elif event.key() in (Qt.Key_Comma, Qt.Key_Less, Qt.Key_Period, Qt.Key_Greater):
             if event.key() in (Qt.Key_Comma, Qt.Key_Less):
                 self.state.crown_gain = max(0.5, self.state.crown_gain - 0.1)
@@ -120,6 +132,7 @@ class ResonanceWidget(QWidget):
         self.snapshot = snapshot
         self.config.field_mode = self.state.field_mode
         self.config.energy_gain = self.state.energy_gain
+        self.config.energy_floor = self.state.energy_floor
         self.config.gamma = self.state.gamma
         self.config.crown_gain = self.state.crown_gain
         self.config.palette_base = self.state.palette_base
@@ -139,6 +152,7 @@ class ResonanceWidget(QWidget):
                 "field_mode": self.state.field_mode,
                 "fade_alpha": self.state.fade_alpha,
                 "energy_gain": self.state.energy_gain,
+                "energy_floor": self.state.energy_floor,
                 "gamma": self.state.gamma,
                 "crown_gain": self.state.crown_gain,
                 "palette_name": self.state.palette_name,
