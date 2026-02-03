@@ -22,6 +22,11 @@ class HUDState:
     drive: float = 0.0
     field_mode: bool = True
     fade_alpha: int = 10
+    energy_gain: float = 1.8
+    gamma: float = 0.65
+    crown_gain: float = 1.4
+    palette_name: str = "BlueAurora"
+    palette_base: float = 0.60
     palette_shift: float = 0.0
 
 
@@ -76,6 +81,11 @@ class Renderer:
             self.hud.drive = render_state.get("drive", 0.0)
             self.hud.field_mode = render_state.get("field_mode", True)
             self.hud.fade_alpha = render_state.get("fade_alpha", self.fade_alpha)
+            self.hud.energy_gain = render_state.get("energy_gain", self.hud.energy_gain)
+            self.hud.gamma = render_state.get("gamma", self.hud.gamma)
+            self.hud.crown_gain = render_state.get("crown_gain", self.hud.crown_gain)
+            self.hud.palette_name = render_state.get("palette_name", self.hud.palette_name)
+            self.hud.palette_base = render_state.get("palette_base", self.hud.palette_base)
             self.hud.palette_shift = render_state.get("palette_shift", 0.0)
 
     def render_frame(self, column: Optional[QImage], shift: bool = True) -> None:
@@ -84,6 +94,7 @@ class Renderer:
         draw_column = column if column is not None else self._build_test_column(self.canvas.height())
         if draw_column is None:
             return
+        draw_column = self._soft_smear_column(draw_column)
         painter = QPainter(self.canvas)
         try:
             painter.setRenderHint(QPainter.Antialiasing, False)
@@ -125,15 +136,36 @@ class Renderer:
             lines.append(f"tps={snap.tps:.1f} vol={snap.volume_per_s:.2f}")
             lines.append(f"spread={snap.spread_bps:.2f} imb={snap.imbalance:+.3f}")
             lines.append(f"micro={snap.micro_vol:.5f} spec={snap.spectral_energy:.3f}")
-        lines.append(f"fade={self.hud.fade_alpha} hue={self.hud.palette_shift:+.2f}")
+        lines.append(
+            f"gain={self.hud.energy_gain:.2f} gamma={self.hud.gamma:.2f} crown={self.hud.crown_gain:.2f}"
+        )
+        lines.append(
+            f"pal={self.hud.palette_name} base={self.hud.palette_base:.2f} hue={self.hud.palette_shift:+.2f}"
+        )
         if self.hud.paused:
             lines.append("PAUSED")
-        lines = lines[:6]
-        hud_width = 250
+        lines = lines[:8]
+        hud_width = 320
         hud_height = 14 + len(lines) * 13
         painter.fillRect(8, 8, hud_width, hud_height, QColor(0, 0, 0, 160))
         for idx, line in enumerate(lines):
             painter.drawText(12, 18 + idx * 13, line)
+
+    def _soft_smear_column(self, column: QImage) -> QImage:
+        w = self.canvas.width()
+        h = self.canvas.height()
+        if w < 2 or h <= 0:
+            return column
+        smear = QImage(column)
+        for y in range(min(h, column.height())):
+            new_color = column.pixelColor(0, y)
+            prev_color = self.canvas.pixelColor(w - 2, y)
+            r = int(new_color.red() * 0.7 + prev_color.red() * 0.3)
+            g = int(new_color.green() * 0.7 + prev_color.green() * 0.3)
+            b = int(new_color.blue() * 0.7 + prev_color.blue() * 0.3)
+            a = int(new_color.alpha() * 0.7 + prev_color.alpha() * 0.3)
+            smear.setPixelColor(0, y, QColor(r, g, b, a))
+        return smear
 
     @staticmethod
     def _build_test_column(height: int) -> Optional[QImage]:
