@@ -118,15 +118,19 @@ class FeatureLayer:
 
         spectral_bins: List[float] = []
         spectral_energy = 0.0
-        if len(self.returns) >= 64:
-            arr = np.array(self.returns, dtype=np.float32)
+        if len(self.returns) >= 128:
+            window_size = min(256, len(self.returns))
+            arr = np.array(list(self.returns)[-window_size:], dtype=np.float32)
             arr = arr - np.mean(arr)
+            window = np.hanning(window_size).astype(np.float32)
+            arr = arr * window
             fft_vals = np.fft.rfft(arr)
             mag = np.abs(fft_vals)[1:65]
-            spectral_bins = mag.tolist()
-            spectral_energy = float(np.mean(np.log1p(mag))) if mag.size else 0.0
+            log_mag = np.log1p(mag)
+            spectral_energy = float(np.mean(log_mag)) if log_mag.size else 0.0
+            spectral_bins = log_mag.tolist()
         else:
-            spectral_bins = [0.0] * 32
+            spectral_bins = [0.0] * 64
 
         norm = {
             "spread": self.normalizer.normalize("spread", spread_bps, k=2.0),
@@ -138,10 +142,13 @@ class FeatureLayer:
         }
 
         if spectral_bins:
-            max_bin = max(spectral_bins) if spectral_bins else 1.0
-            spectral_bins = [min(b / (max_bin + 1e-9), 1.0) for b in spectral_bins]
+            normalized_bins: List[float] = []
+            for idx, value in enumerate(spectral_bins):
+                norm_value = self.normalizer.normalize(f"spec_bin_{idx}", value, k=2.0)
+                normalized_bins.append(norm_value)
+            spectral_bins = normalized_bins
         else:
-            spectral_bins = [0.0] * 32
+            spectral_bins = [0.0] * 64
 
         return FeatureSnapshot(
             mid=mid,

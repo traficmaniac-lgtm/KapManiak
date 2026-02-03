@@ -18,7 +18,12 @@ class RuntimeState:
     paused: bool = False
     field_mode: bool = True
     fade_alpha: int = 10
+    energy_gain: float = 1.8
+    gamma: float = 0.65
+    crown_gain: float = 1.4
+    palette_base: float = 0.60
     palette_shift: float = 0.0
+    palette_name: str = "BlueAurora"
 
 
 class ResonanceWidget(QWidget):
@@ -73,17 +78,35 @@ class ResonanceWidget(QWidget):
             self.state.field_mode = not self.state.field_mode
             self.config.field_mode = self.state.field_mode
         elif event.key() in (Qt.Key_Plus, Qt.Key_Equal):
-            self.state.fade_alpha = min(24, self.state.fade_alpha + 2)
-            self.renderer.fade_alpha = self.state.fade_alpha
+            self.state.energy_gain = min(3.0, self.state.energy_gain + 0.1)
+            self.config.energy_gain = self.state.energy_gain
         elif event.key() in (Qt.Key_Minus, Qt.Key_Underscore):
-            self.state.fade_alpha = max(4, self.state.fade_alpha - 2)
-            self.renderer.fade_alpha = self.state.fade_alpha
-        elif event.key() == Qt.Key_BracketLeft:
-            self.state.palette_shift -= 0.02
-            self.config.palette_shift = self.state.palette_shift
-        elif event.key() == Qt.Key_BracketRight:
-            self.state.palette_shift += 0.02
-            self.config.palette_shift = self.state.palette_shift
+            self.state.energy_gain = max(0.8, self.state.energy_gain - 0.1)
+            self.config.energy_gain = self.state.energy_gain
+        elif event.key() in (Qt.Key_BracketLeft, Qt.Key_BracketRight):
+            if event.key() == Qt.Key_BracketLeft:
+                self.state.gamma = max(0.45, self.state.gamma - 0.02)
+            else:
+                self.state.gamma = min(0.85, self.state.gamma + 0.02)
+            self.config.gamma = self.state.gamma
+        elif event.key() in (Qt.Key_Comma, Qt.Key_Less, Qt.Key_Period, Qt.Key_Greater):
+            if event.key() in (Qt.Key_Comma, Qt.Key_Less):
+                self.state.crown_gain = max(0.5, self.state.crown_gain - 0.1)
+            else:
+                self.state.crown_gain = min(3.0, self.state.crown_gain + 0.1)
+            self.config.crown_gain = self.state.crown_gain
+        elif event.key() == Qt.Key_1:
+            self.state.palette_base = 0.60
+            self.state.palette_name = "BlueAurora"
+            self.config.palette_base = self.state.palette_base
+        elif event.key() == Qt.Key_2:
+            self.state.palette_base = 0.72
+            self.state.palette_name = "PurplePlasma"
+            self.config.palette_base = self.state.palette_base
+        elif event.key() == Qt.Key_3:
+            self.state.palette_base = 0.48
+            self.state.palette_name = "GreenNebula"
+            self.config.palette_base = self.state.palette_base
         elif event.key() == Qt.Key_S:
             output_dir = os.path.join(os.path.dirname(__file__), "..", "out")
             self.renderer.save_png(os.path.abspath(output_dir))
@@ -96,6 +119,10 @@ class ResonanceWidget(QWidget):
             return
         self.snapshot = snapshot
         self.config.field_mode = self.state.field_mode
+        self.config.energy_gain = self.state.energy_gain
+        self.config.gamma = self.state.gamma
+        self.config.crown_gain = self.state.crown_gain
+        self.config.palette_base = self.state.palette_base
         self.config.palette_shift = self.state.palette_shift
         self.latest_column = self.field.build_column(self.renderer.canvas.height(), snapshot, self.config)
 
@@ -111,6 +138,11 @@ class ResonanceWidget(QWidget):
                 "drive": self.field.last_drive,
                 "field_mode": self.state.field_mode,
                 "fade_alpha": self.state.fade_alpha,
+                "energy_gain": self.state.energy_gain,
+                "gamma": self.state.gamma,
+                "crown_gain": self.state.crown_gain,
+                "palette_name": self.state.palette_name,
+                "palette_base": self.state.palette_base,
                 "palette_shift": self.state.palette_shift,
             },
         )

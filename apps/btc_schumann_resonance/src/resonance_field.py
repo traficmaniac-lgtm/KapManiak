@@ -11,6 +11,11 @@ from .features import FeatureSnapshot
 @dataclass
 class FieldConfig:
     field_mode: bool = True
+    energy_gain: float = 1.8
+    energy_floor: float = 0.04
+    gamma: float = 0.65
+    crown_gain: float = 1.4
+    palette_base: float = 0.60
     palette_shift: float = 0.0
 
 
@@ -19,6 +24,7 @@ class ResonanceField:
         self.phase = 0.0
         self.noise_seed = random.random() * 10.0
         self.last_drive = 0.0
+        self.hue_shift = 0.0
 
     def build_column(self, height: int, snapshot: FeatureSnapshot, config: FieldConfig) -> QImage:
         column = QImage(1, height, QImage.Format_ARGB32)
@@ -36,6 +42,7 @@ class ResonanceField:
         finally:
             painter.end()
         self.phase += 0.14
+        self.hue_shift = (self.hue_shift + 0.0005) % 1.0
         return column
 
     def _draw_field(
@@ -57,58 +64,55 @@ class ResonanceField:
         drive *= max(0.25, 1.0 - 0.35 * spread)
         self.last_drive = drive
 
-        positions = [0.82, 0.72, 0.64, 0.56, 0.48, 0.40]
-        sigma_min = 0.015
-        sigma_max = 0.04
+        positions = [0.10, 0.18, 0.26, 0.34, 0.42, 0.50, 0.58, 0.66]
+        sigma_low = 0.028
+        sigma_high = 0.012
         harmonics: List[Tuple[float, float, float]] = []
         for i, pos in enumerate(positions):
-            sigma = sigma_max - (sigma_max - sigma_min) * (i / max(1, len(positions) - 1))
-            base_amp = (0.15 + 0.85 * drive) * (1.0 / (i + 1))
-            omega = 0.18 + i * 0.07
-            phase_i = self.noise_seed * 1.7 + i * 0.6
-            mod = 0.55 + 0.45 * math.sin(phase_i + self.phase * omega)
-            harmonics.append((pos, sigma, base_amp * mod))
+            sigma = sigma_low - (sigma_low - sigma_high) * (i / max(1, len(positions) - 1))
+            base_amp = (0.25 + 0.75 * drive) * (1.0 / (1.0 + i * 0.35))
+            omega = 0.15 + i * 0.04
+            phase_i = self.noise_seed * 1.7 + i * 0.9
+            mod = 0.70 + 0.30 * math.sin(phase_i + self.phase * omega)
+            band_noise = 0.5 + 0.5 * math.sin(self.noise_seed * 4.1 + i * 2.3)
+            amp = base_amp * mod * (1.0 + 0.25 * micro * band_noise)
+            harmonics.append((pos, sigma, amp))
 
-        crown = [0.0 for _ in range(height)]
-        bins = snapshot.spectral_bins[:32]
+        bins = snapshot.spectral_bins[:64] if snapshot.spectral_bins else []
+        spec_drive = 0.0
         if bins:
-            for idx, value in enumerate(bins):
-                if value <= 0.01:
-                    continue
-                y_norm = (idx / max(1, len(bins) - 1)) * 0.25
-                center = int(y_norm * (height - 1))
-                sigma_px = max(1, int(height * 0.012))
-                start = max(0, center - 3 * sigma_px)
-                end = min(height - 1, center + 3 * sigma_px)
-                for y in range(start, end + 1):
-                    dist = (y - center) / max(1.0, sigma_px)
-                    crown[y] += value * math.exp(-(dist * dist) / 2.0)
+            spec_drive = min(1.0, sum(bins) / len(bins))
+        crown_ratio = 0.30
+        crown_gain = config.crown_gain * (0.6 + 1.4 * spec_drive)
 
         imbalance_norm = imbalance * 0.5 + 0.5
-        hue_base = 0.62 + config.palette_shift
+        hue_base = config.palette_base + config.palette_shift + self.hue_shift
         for y in range(height):
             y_norm = y / max(1, height - 1)
+            y_bottom = 1.0 - y_norm
             energy = 0.0
-            drift = imbalance * 0.02 + math.sin(self.phase * 0.08 + self.noise_seed) * 0.004
+            drift = imbalance * 0.015 + math.sin(self.phase * 0.08 + self.noise_seed) * 0.004
             for pos, sigma, amp in harmonics:
-                dy = y_norm - pos - drift
+                dy = y_bottom - pos - drift
                 energy += amp * math.exp(-(dy * dy) / (2.0 * sigma * sigma))
-            crown_energy = spectral * max(0.0, (0.28 - y_norm) / 0.28)
-            energy += crown[y] * (0.5 + spectral * 0.7) + crown_energy
-            ripple = (math.sin(y_norm * 55.0 + self.phase * 1.3 + self.noise_seed * 3.3) + 1.0) * 0.5
-            energy += ripple * micro * 0.15
+            if bins and y_norm <= crown_ratio:
+                rel = 1.0 - y_norm / crown_ratio
+                idx = int(rel * (len(bins) - 1))
+                crown_energy = bins[idx] * (0.35 + 0.65 * rel)
+                energy += crown_gain * crown_energy
+            noise = 0.5 + 0.5 * math.sin(y_norm * 28.0 + self.noise_seed * 6.7)
+            energy += noise * micro * 0.12
             energy *= max(0.2, 1.0 - 0.25 * spread)
             energy = max(0.0, min(1.0, energy))
+            energy = max(config.energy_floor, min(1.0, config.energy_floor + energy * config.energy_gain))
 
-            hue = hue_base + 0.30 * (1.0 - y_norm) + 0.10 * (imbalance_norm - 0.5) + 0.05 * math.sin(
-                self.phase * 0.2
-            )
+            hue = hue_base + 0.35 * (1.0 - y_norm) + 0.10 * (imbalance_norm - 0.5)
             hue %= 1.0
-            saturation = min(1.0, 0.65 + 0.35 * drive)
-            value = max(0.05, min(1.0, 0.05 + 0.95 * energy))
-            if energy > 0.85 and micro > 0.6:
+            saturation = min(1.0, 0.75 + 0.25 * drive)
+            value = pow(max(0.0, min(1.0, energy)), config.gamma)
+            if value > 0.85:
                 value = 1.0
-                saturation *= 0.45
+                saturation *= 0.65
             alpha = min(1.0, 0.2 + 0.8 * energy)
             color = QColor.fromHsvF(hue, saturation, value, alpha)
             painter.setPen(color)
@@ -185,11 +189,13 @@ class ResonanceField:
         crown_height = int(height * 0.25)
         crown_base = crown_height
         energy = snapshot.norm["spectral"]
-        for idx, value in enumerate(bins[:32]):
+        spec_drive = min(1.0, sum(bins) / len(bins)) if bins else 0.0
+        gain = config.crown_gain * (0.6 + 1.4 * spec_drive)
+        for idx, value in enumerate(bins[:64]):
             if value <= 0.01:
                 continue
-            freq_pos = idx / 32.0
-            ray_height = int(value * crown_height * (0.6 + energy))
+            freq_pos = idx / 64.0
+            ray_height = int(value * crown_height * gain)
             y_start = crown_base - ray_height
             hue = 0.78 + freq_pos * 0.12
             alpha = min(0.9, 0.25 + value * 0.7 + energy * 0.2)
