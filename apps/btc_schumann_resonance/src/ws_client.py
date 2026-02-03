@@ -1,0 +1,108 @@
+import json
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass, field
+from typing import Deque, Dict, Optional
+
+import websocket
+
+WS_URL = (
+    "wss://stream.binance.com:9443/stream?streams="
+    "btcusdt@bookTicker/btcusdt@aggTrade/btcusdt@depth20@100ms"
+)
+
+
+@dataclass
+class WSDataStore:
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    book_ticker: Optional[Dict] = None
+    depth: Optional[Dict] = None
+    trades: Deque[Dict] = field(default_factory=lambda: deque(maxlen=2000))
+    status: str = "DISCONNECTED"
+    last_message_ts: float = 0.0
+
+    def update_status(self, status: str) -> None:
+        with self.lock:
+            self.status = status
+
+    def push_trade(self, trade: Dict) -> None:
+        with self.lock:
+            self.trades.append(trade)
+            self.last_message_ts = time.time()
+
+    def set_book_ticker(self, data: Dict) -> None:
+        with self.lock:
+            self.book_ticker = data
+            self.last_message_ts = time.time()
+
+    def set_depth(self, data: Dict) -> None:
+        with self.lock:
+            self.depth = data
+            self.last_message_ts = time.time()
+
+
+class WSClient(threading.Thread):
+    def __init__(self, store: WSDataStore, reconnect_delay: float = 3.0) -> None:
+        super().__init__(daemon=True)
+        self.store = store
+        self.reconnect_delay = reconnect_delay
+        self._stop_event = threading.Event()
+        self._ws: Optional[websocket.WebSocketApp] = None
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._ws is not None:
+            try:
+                self._ws.close()
+            except Exception:
+                pass
+
+    def run(self) -> None:
+        while not self._stop_event.is_set():
+            self._connect_once()
+            if not self._stop_event.is_set():
+                time.sleep(self.reconnect_delay)
+
+    def _connect_once(self) -> None:
+        self.store.update_status("CONNECTING")
+
+        def on_open(_ws) -> None:
+            self.store.update_status("LIVE")
+
+        def on_message(_ws, message: str) -> None:
+            try:
+                payload = json.loads(message)
+            except json.JSONDecodeError:
+                return
+            data = payload.get("data", {})
+            stream = payload.get("stream", "")
+            if stream.endswith("@bookTicker"):
+                self.store.set_book_ticker(data)
+            elif stream.endswith("@aggTrade"):
+                self.store.push_trade(data)
+            elif "@depth20" in stream:
+                self.store.set_depth(data)
+
+        def on_error(_ws, _error) -> None:
+            self.store.update_status("ERROR")
+
+        def on_close(_ws, _code, _msg) -> None:
+            self.store.update_status("DISCONNECTED")
+
+        self._ws = websocket.WebSocketApp(
+            WS_URL,
+            on_open=on_open,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close,
+        )
+        try:
+            self._ws.run_forever(ping_interval=20, ping_timeout=10)
+        except Exception:
+            self.store.update_status("ERROR")
+        finally:
+            try:
+                self._ws.close()
+            except Exception:
+                pass
