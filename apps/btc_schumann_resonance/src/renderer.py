@@ -19,6 +19,10 @@ class HUDState:
     book_count: float = 0.0
     trade_count: float = 0.0
     depth_count: float = 0.0
+    drive: float = 0.0
+    field_mode: bool = True
+    fade_alpha: int = 10
+    palette_shift: float = 0.0
 
 
 class Renderer:
@@ -28,6 +32,7 @@ class Renderer:
         self.canvas = QImage(width, height, QImage.Format_ARGB32)
         self.canvas.fill(QColor(6, 8, 16))
         self.hud = HUDState()
+        self.fade_alpha = 10
 
     def resize(self, width: int, height: int) -> None:
         if width <= 0 or height <= 0:
@@ -56,6 +61,7 @@ class Renderer:
         snapshot: Optional[FeatureSnapshot],
         paused: bool,
         diagnostics: Optional[dict] = None,
+        render_state: Optional[dict] = None,
     ) -> None:
         self.hud.status = status
         self.hud.snapshot = snapshot
@@ -66,6 +72,11 @@ class Renderer:
             self.hud.book_count = diagnostics.get("book_count", 0.0)
             self.hud.trade_count = diagnostics.get("trade_count", 0.0)
             self.hud.depth_count = diagnostics.get("depth_count", 0.0)
+        if render_state:
+            self.hud.drive = render_state.get("drive", 0.0)
+            self.hud.field_mode = render_state.get("field_mode", True)
+            self.hud.fade_alpha = render_state.get("fade_alpha", self.fade_alpha)
+            self.hud.palette_shift = render_state.get("palette_shift", 0.0)
 
     def render_frame(self, column: Optional[QImage], shift: bool = True) -> None:
         if shift:
@@ -91,6 +102,8 @@ class Renderer:
             painter.setCompositionMode(QPainter.CompositionMode_Source)
             painter.drawImage(QRect(0, 0, w - 1, h), self.canvas, QRect(1, 0, w - 1, h))
             painter.fillRect(w - 1, 0, 1, h, QColor(0, 0, 0))
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            painter.fillRect(0, 0, w, h, QColor(0, 0, 0, self.fade_alpha))
         finally:
             painter.end()
 
@@ -105,25 +118,22 @@ class Renderer:
         painter.setRenderHint(QPainter.Antialiasing, False)
         painter.setPen(QColor(200, 220, 255, 220))
         painter.setFont(QFont("Consolas", 9))
-        lines = [
-            f"WS: {self.hud.status} (connected={self.hud.ws_connected})",
-            f"last msg: {self.hud.last_msg_age_ms:.0f} ms",
-            f"counts: book={self.hud.book_count:.0f} trade={self.hud.trade_count:.0f} depth={self.hud.depth_count:.0f}",
-        ]
+        mode = "FIELD" if self.hud.field_mode else "LEGACY"
+        lines = [f"WS: {self.hud.status}", f"Mode={mode} Drive={self.hud.drive:.2f}"]
         if self.hud.snapshot:
             snap = self.hud.snapshot
-            lines.append(f"mid: {snap.mid:.2f}")
-            lines.append(f"tps: {snap.tps:.1f}")
-            lines.append(f"spread: {snap.spread_bps:.2f} bps")
-            lines.append(f"imb: {snap.imbalance:+.3f}")
-            lines.append(f"micro: {snap.micro_vol:.5f}")
+            lines.append(f"tps={snap.tps:.1f} vol={snap.volume_per_s:.2f}")
+            lines.append(f"spread={snap.spread_bps:.2f} imb={snap.imbalance:+.3f}")
+            lines.append(f"micro={snap.micro_vol:.5f} spec={snap.spectral_energy:.3f}")
+        lines.append(f"fade={self.hud.fade_alpha} hue={self.hud.palette_shift:+.2f}")
         if self.hud.paused:
             lines.append("PAUSED")
-        hud_width = 360
-        hud_height = 16 + len(lines) * 14
-        painter.fillRect(8, 8, hud_width, hud_height, QColor(0, 0, 0, 140))
+        lines = lines[:6]
+        hud_width = 250
+        hud_height = 14 + len(lines) * 13
+        painter.fillRect(8, 8, hud_width, hud_height, QColor(0, 0, 0, 160))
         for idx, line in enumerate(lines):
-            painter.drawText(8, 18 + idx * 14, line)
+            painter.drawText(12, 18 + idx * 13, line)
 
     @staticmethod
     def _build_test_column(height: int) -> Optional[QImage]:

@@ -16,7 +16,9 @@ from .ws_client import WSClient, WSDataStore
 @dataclass
 class RuntimeState:
     paused: bool = False
-    stacked_mode: bool = True
+    field_mode: bool = True
+    fade_alpha: int = 10
+    palette_shift: float = 0.0
 
 
 class ResonanceWidget(QWidget):
@@ -29,7 +31,7 @@ class ResonanceWidget(QWidget):
 
         self.feature_layer = FeatureLayer()
         self.field = ResonanceField()
-        self.config = FieldConfig(stacked_mode=True)
+        self.config = FieldConfig(field_mode=True)
         self.state = RuntimeState()
         self.snapshot: Optional[FeatureSnapshot] = None
         self.latest_column = None
@@ -68,8 +70,20 @@ class ResonanceWidget(QWidget):
         elif event.key() == Qt.Key_C:
             self.renderer.clear()
         elif event.key() == Qt.Key_F:
-            self.state.stacked_mode = not self.state.stacked_mode
-            self.config.stacked_mode = self.state.stacked_mode
+            self.state.field_mode = not self.state.field_mode
+            self.config.field_mode = self.state.field_mode
+        elif event.key() in (Qt.Key_Plus, Qt.Key_Equal):
+            self.state.fade_alpha = min(24, self.state.fade_alpha + 2)
+            self.renderer.fade_alpha = self.state.fade_alpha
+        elif event.key() in (Qt.Key_Minus, Qt.Key_Underscore):
+            self.state.fade_alpha = max(4, self.state.fade_alpha - 2)
+            self.renderer.fade_alpha = self.state.fade_alpha
+        elif event.key() == Qt.Key_BracketLeft:
+            self.state.palette_shift -= 0.02
+            self.config.palette_shift = self.state.palette_shift
+        elif event.key() == Qt.Key_BracketRight:
+            self.state.palette_shift += 0.02
+            self.config.palette_shift = self.state.palette_shift
         elif event.key() == Qt.Key_S:
             output_dir = os.path.join(os.path.dirname(__file__), "..", "out")
             self.renderer.save_png(os.path.abspath(output_dir))
@@ -81,13 +95,25 @@ class ResonanceWidget(QWidget):
         if snapshot is None:
             return
         self.snapshot = snapshot
-        self.config.stacked_mode = self.state.stacked_mode
+        self.config.field_mode = self.state.field_mode
+        self.config.palette_shift = self.state.palette_shift
         self.latest_column = self.field.build_column(self.renderer.canvas.height(), snapshot, self.config)
 
     def _render_frame(self) -> None:
         diagnostics = self.store.get_diagnostics()
         status = diagnostics.get("status", "DISCONNECTED")
-        self.renderer.update_hud(status, self.snapshot, self.state.paused, diagnostics)
+        self.renderer.update_hud(
+            status,
+            self.snapshot,
+            self.state.paused,
+            diagnostics,
+            {
+                "drive": self.field.last_drive,
+                "field_mode": self.state.field_mode,
+                "fade_alpha": self.state.fade_alpha,
+                "palette_shift": self.state.palette_shift,
+            },
+        )
         if self.state.paused:
             self.renderer.render_frame(None, shift=False)
             self.update()
