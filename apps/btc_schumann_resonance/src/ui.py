@@ -57,7 +57,8 @@ class ResonanceWidget(QWidget):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.Antialiasing, False)
-            painter.drawImage(0, 0, self.renderer.image)
+            painter.drawImage(0, 0, self.renderer.canvas)
+            self.renderer.draw_hud(painter)
         finally:
             painter.end()
 
@@ -81,17 +82,15 @@ class ResonanceWidget(QWidget):
             return
         self.snapshot = snapshot
         self.config.stacked_mode = self.state.stacked_mode
-        self.latest_column = self.field.build_column(self.height(), snapshot, self.config)
+        self.latest_column = self.field.build_column(self.renderer.canvas.height(), snapshot, self.config)
 
     def _render_frame(self) -> None:
-        with self.store.lock:
-            status = self.store.status
-        self.renderer.update_hud(status, self.snapshot, self.state.paused)
+        diagnostics = self.store.get_diagnostics()
+        status = diagnostics.get("status", "DISCONNECTED")
+        self.renderer.update_hud(status, self.snapshot, self.state.paused, diagnostics)
         if self.state.paused:
             self.renderer.render_frame(None, shift=False)
             self.update()
-            return
-        if self.latest_column is None:
             return
         self.renderer.render_frame(self.latest_column, shift=True)
         self.update()

@@ -19,6 +19,9 @@ class WSDataStore:
     book_ticker: Optional[Dict] = None
     depth: Optional[Dict] = None
     trades: Deque[Dict] = field(default_factory=lambda: deque(maxlen=2000))
+    book_ticks: Deque[float] = field(default_factory=lambda: deque(maxlen=2000))
+    depth_ticks: Deque[float] = field(default_factory=lambda: deque(maxlen=2000))
+    trade_ticks: Deque[float] = field(default_factory=lambda: deque(maxlen=4000))
     status: str = "DISCONNECTED"
     last_message_ts: float = 0.0
 
@@ -29,17 +32,41 @@ class WSDataStore:
     def push_trade(self, trade: Dict) -> None:
         with self.lock:
             self.trades.append(trade)
+            self.trade_ticks.append(time.time())
             self.last_message_ts = time.time()
 
     def set_book_ticker(self, data: Dict) -> None:
         with self.lock:
             self.book_ticker = data
+            self.book_ticks.append(time.time())
             self.last_message_ts = time.time()
 
     def set_depth(self, data: Dict) -> None:
         with self.lock:
             self.depth = data
+            self.depth_ticks.append(time.time())
             self.last_message_ts = time.time()
+
+    def get_diagnostics(self) -> Dict[str, float]:
+        now = time.time()
+        with self.lock:
+            self._prune_ticks(self.book_ticks, now)
+            self._prune_ticks(self.depth_ticks, now)
+            self._prune_ticks(self.trade_ticks, now)
+            last_age_ms = (now - self.last_message_ts) * 1000.0 if self.last_message_ts else -1.0
+            return {
+                "ws_connected": self.status == "LIVE",
+                "last_msg_age_ms": last_age_ms,
+                "book_count": float(len(self.book_ticks)),
+                "depth_count": float(len(self.depth_ticks)),
+                "trade_count": float(len(self.trade_ticks)),
+                "status": self.status,
+            }
+
+    @staticmethod
+    def _prune_ticks(ticks: Deque[float], now: float, window: float = 2.0) -> None:
+        while ticks and now - ticks[0] > window:
+            ticks.popleft()
 
 
 class WSClient(threading.Thread):
