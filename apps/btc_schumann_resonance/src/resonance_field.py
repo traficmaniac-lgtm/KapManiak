@@ -12,8 +12,8 @@ from .features import FeatureSnapshot
 class FieldConfig:
     field_mode: bool = True
     energy_gain: float = 1.8
-    energy_floor: float = 0.04
-    gamma: float = 0.65
+    energy_floor: float = 0.08
+    gamma: float = 0.6
     crown_gain: float = 1.4
     palette_base: float = 0.60
     palette_shift: float = 0.0
@@ -104,15 +104,16 @@ class ResonanceField:
             energy += noise * micro * 0.12
             energy *= max(0.2, 1.0 - 0.25 * spread)
             energy = max(0.0, min(1.0, energy))
-            energy = max(config.energy_floor, min(1.0, config.energy_floor + energy * config.energy_gain))
+            energy = max(0.0, min(1.0, energy * config.energy_gain))
 
             hue = hue_base + 0.35 * (1.0 - y_norm) + 0.10 * (imbalance_norm - 0.5)
             hue %= 1.0
-            saturation = min(1.0, 0.75 + 0.25 * drive)
-            value = pow(max(0.0, min(1.0, energy)), config.gamma)
-            if value > 0.85:
+            saturation = min(1.0, 0.55 + 0.45 * drive)
+            value = config.energy_floor + (1.0 - config.energy_floor) * energy
+            value = pow(max(0.0, min(1.0, value)), config.gamma)
+            if energy > 0.85:
                 value = 1.0
-                saturation *= 0.65
+                saturation *= 0.4
             alpha = min(1.0, 0.2 + 0.8 * energy)
             color = QColor.fromHsvF(hue, saturation, value, alpha)
             painter.setPen(color)
